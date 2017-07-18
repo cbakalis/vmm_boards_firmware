@@ -23,6 +23,7 @@ port (
     rd_en       : in std_logic;
     dout        : out std_logic_vector(15 downto 0);
     almost_full : out std_logic;
+    fifo_empty  : out std_logic;
     prog_full   : out std_logic
     );
 end EPATH_FIFO_WRAP;
@@ -80,7 +81,8 @@ PORT MAP (
     prog_empty_thresh => std_logic_vector(to_unsigned(1010, 10))
 );
 --
-rst_state <= rst or (full_s and empty_s);
+rst_state   <= rst or (full_s and empty_s);
+fifo_empty  <= empty_s;
 --
 process(rd_clk)
 begin

@@ -167,7 +167,8 @@ begin
 	if bitOUTclk'event and bitOUTclk = '1' then	
         if re_r = '1' then
             if fifo_empty_r = '1' then	   
-                byte_out_r  <= (others=>'1'); --error flag, not HDLC_flag!
+--IG                byte_out_r  <= (others=>'1'); --error flag, not HDLC_flag!
+                byte_out_r  <= "01111111"; --error flag, not HDLC_flag! --IG: error flag is only 7 bits ones and 1 bit zero - "01111111"
                 isflag_r    <= '1';
             else
                 byte_out_r  <= byte_out(7 downto 0);

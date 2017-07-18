@@ -81,10 +81,10 @@ signal trailer, trailer0, trailer1, header, data : std_logic_vector (15 downto 0
 signal wordOUT_s : std_logic_vector (15 downto 0) := (others => '0');
 
 signal pathENA : std_logic := '0';
-signal pathENAtrig, blockCountRdy,xoff_s,not_a_comma,a_comma,trailer_reserved_bit : std_logic;
+signal pathENAtrig, blockCountRdy,xoff_s,not_a_comma,trailer_reserved_bit : std_logic;
 --
 signal timeCnt_lastClk : std_logic_vector ((toHostTimeoutBitn-1+2) downto 0) := (others=>'1');
-signal timeout_state,timeout_ena,timeout_soc_ena,timeout_eoc_ena : std_logic := '0';
+signal instTimeoutEnaIn_s,TimeoutEnaIn_s,timeout_state,timeout_ena,timeout_soc_ena,timeout_eoc_ena : std_logic := '0';
 signal timeout_event,timeout_trailer_case : std_logic;
 --
 signal clk160_cnt0,clk160_cnt1 : std_logic_vector (1 downto 0) := (others=>'0');
@@ -144,7 +144,22 @@ DIN_RDY <= '1' when (clk160_cnt0 = "01") else '0'; -- 1-clk pulse @ clk160
 -- incomplete block
 ------------------------------------------------------------
 not_a_comma <= '1' when (DIN_RDY = '1' and DIN(9 downto 8) /= "11") else '0';
-a_comma     <= '1' when (DIN_RDY = '1' and DIN(9 downto 8) = "11") else '0';
+--
+process(clk160,rst) -- timeout is held disabled until the new block is started
+begin
+    if rst = '1' then
+        instTimeoutEnaIn_s  <= '0';
+        TimeoutEnaIn_s      <= '0';
+    elsif rising_edge (clk160) then
+        if xoff_s = '1' then
+            instTimeoutEnaIn_s  <= '0';
+            TimeoutEnaIn_s      <= '0';
+        elsif DIN(9 downto 8) = "10" then -- only after the first soc the timeout is enabled/re-enabled
+            instTimeoutEnaIn_s  <= instTimeoutEnaIn;
+            TimeoutEnaIn_s      <= TimeoutEnaIn;
+        end if;
+    end if;
+end process;
 --
 process(clk160,rst) 
 begin
@@ -162,12 +177,11 @@ begin
         if EOB_MARK = '1' or xoff_s = '1' then
             timeout_ena <= '0';
         elsif not_a_comma = '1' then
-            timeout_ena <= TimeoutEnaIn or instTimeoutEnaIn;
+            timeout_ena <= TimeoutEnaIn_s or instTimeoutEnaIn_s;
         end if;
         --
-        if (timeCnt_lastClk = (timeCntIn & clk160_cnt1) and TimeoutEnaIn = '1') or 
-                (trailer_sent = '1' and instTimeoutEnaIn = '1' and timeout_state = '0' and timeout_eoc_ena = '0') then  -- timeCntIn is held 1 clk40, refreshed @ clk160, once during this time
---                (trailer_sent = '1' and instTimeoutEnaIn = '1' and timeout_state = '0' and timeout_eoc_ena = '0') then  -- timeCntIn is held 1 clk40, refreshed @ clk160, once during this time
+        if (timeCnt_lastClk = (timeCntIn & clk160_cnt1) and TimeoutEnaIn_s = '1') or 
+                (trailer_sent = '1' and instTimeoutEnaIn_s = '1' and timeout_state = '0' and timeout_eoc_ena = '0') then  -- timeCntIn is held 1 clk40, refreshed @ clk160, once during this time
             timeout_event <= timeout_ena; --  held 1 clk40
         else
             timeout_event <= '0';
@@ -326,9 +340,9 @@ begin
             if truncateDataFlag = '0' then
                 DIN_CODE_r <= DIN_s(9 downto 8);
             else
-                if DIN_RDY_r = '1' then
+                --if DIN_RDY_r = '1' then
                     DIN_CODE_r <= "11";
-                end if;
+                --end if;
             end if;
         end if;       
     end if;       

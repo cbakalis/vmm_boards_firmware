@@ -219,6 +219,8 @@ set files [list \
  "[file normalize "$origin_dir/sources_1/ip/fh_epath_fifo2K_18bit_wide.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/hdlc_bist_fifo.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/mmcm_ttc.xcix"]"\
+ "[file normalize "$origin_dir/sources_1/ip/vio_del.xcix"]"\
+ "[file normalize "$origin_dir/sources_1/ip/clk_wiz_board.xcix"]"\
  "[file normalize "$origin_dir/sources_1/readout/event_timing_reset.vhd"]"\
  "[file normalize "$origin_dir/sources_1/readout/select_data.vhd"]"\
  "[file normalize "$origin_dir/sources_1/readout/vmmSignalsDemux.vhd"]"\

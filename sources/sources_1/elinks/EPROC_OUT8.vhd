@@ -23,8 +23,8 @@ port (
     bitCLKx4    : in  std_logic;
     rst         : in  std_logic;
     ENA         : in  std_logic;
-    swap_outbits : in  std_logic;
     getDataTrig : out std_logic; -- @ bitCLKx4
+    swap_outbits: in  std_logic;
     ENCODING    : in  std_logic_vector (3 downto 0);
     EDATA_OUT   : out std_logic_vector (7 downto 0);
     TTCin       : in  std_logic_vector (8 downto 0);
@@ -39,7 +39,6 @@ constant zeros8bit  : std_logic_vector (7 downto 0) := (others=>'0');
 signal EdataOUT_ENC8b10b_case, EdataOUT_direct_case, EdataOUT_HDLC_case, EdataOUT_TTC3_case, EdataOUT_TTC4_case : std_logic_vector (7 downto 0);
 signal rst_s, rst_case000, rst_case001, rst_case010, rst_case011 : std_logic;
 signal getDataTrig_ENC8b10b_case, getDataTrig_direct_case, getDataTrig_HDLC_case, getDataTrig_TTC_cases : std_logic;
-
 signal edata_out_s : std_logic_vector (7 downto 0);
 
 begin
@@ -105,8 +104,8 @@ begin
         else
             EdataOUT_TTC3_case <= TTCin(1) & TTCin(7 downto 2) & TTCin(0);
             EdataOUT_TTC4_case <= TTCin(8 downto 2) & TTCin(0);
-        end if;	   
-	end if;
+        end if;    
+    end if;
 end process;
 --
 
@@ -116,20 +115,30 @@ end process;
 dataOUTmux: entity work.MUX8_Nbit 
 generic map (N=>8)
 port map( 
-	data0    => EdataOUT_direct_case,
-	data1    => EdataOUT_ENC8b10b_case,
-	data2    => EdataOUT_HDLC_case,
-	data3    => EdataOUT_TTC3_case,
-	data4    => EdataOUT_TTC4_case,
-	data5    => zeros8bit,
-	data6    => zeros8bit,
-	data7    => zeros8bit,
-	sel      => ENCODING(2 downto 0),
-	data_out => edata_out_s
-	);
+    data0    => EdataOUT_direct_case,
+    data1    => EdataOUT_ENC8b10b_case,
+    data2    => EdataOUT_HDLC_case,
+    data3    => EdataOUT_TTC3_case,
+    data4    => EdataOUT_TTC4_case,
+    data5    => zeros8bit,
+    data6    => zeros8bit,
+    data7    => zeros8bit,
+    sel      => ENCODING(2 downto 0),
+    data_out => edata_out_s
+    );
 --
 getDataTrig  <= ENA and (getDataTrig_TTC_cases or getDataTrig_HDLC_case or getDataTrig_ENC8b10b_case or getDataTrig_direct_case);
 --
+
+out_sel: process(swap_outbits,edata_out_s)
+begin   
+    if swap_outbits = '1' then
+        EDATA_OUT <= edata_out_s(0) & edata_out_s(1) & edata_out_s(2) & edata_out_s(3)
+                  &  edata_out_s(4) & edata_out_s(5) & edata_out_s(6) & edata_out_s(7);
+    else
+        EDATA_OUT <= edata_out_s;
+    end if;    
+end process;
 
 end generate gen_enabled;
 --
@@ -138,15 +147,6 @@ gen_disabled: if do_generate = false generate
     EDATA_OUT   <= (others=>'0');
     getDataTrig <= '0';
 end generate gen_disabled;
-
-out_sel: process(swap_outbits, edata_out_s)
-begin   
-    if swap_outbits = '1' then
-        EDATA_OUT <= edata_out_s(0) & edata_out_s(1) & edata_out_s(2) & edata_out_s(3) & edata_out_s(4) & edata_out_s(5) & edata_out_s(6) & edata_out_s(7);
-    else
-        EDATA_OUT <= edata_out_s;
-    end if;	   
-end process;
 
 end Behavioral;
 

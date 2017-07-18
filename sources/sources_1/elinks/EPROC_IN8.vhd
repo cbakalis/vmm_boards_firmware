@@ -21,9 +21,9 @@ port (
     bitCLK      : in  std_logic;
     rst         : in  std_logic;
     ENA         : in  std_logic;
-    swap_inputbits: in std_logic;
     ENCODING    : in  std_logic_vector(1 downto 0);
     EDATA_IN    : in  std_logic_vector(7 downto 0);
+    swap_inputbits : in std_logic;
     DATA_OUT    : out std_logic_vector(9 downto 0);
     DATA_RDY    : out std_logic
     );
@@ -31,24 +31,25 @@ end EPROC_IN8;
 
 architecture Behavioral of EPROC_IN8 is
 
+signal edata_in_s : std_logic_vector (7 downto 0);
 signal data_direct_8b10b_case : std_logic_vector(9 downto 0);
 signal drdy_direct_8b10b_case : std_logic;
 signal ena_case0 : std_logic;
-signal edata_in_s : std_logic_vector (7 downto 0);
 ---
 
 begin
 
 gen_enabled: if do_generate = true generate
 
-Rin_sel: process(swap_inputbits, EDATA_IN)
+in_sel: process(swap_inputbits,EDATA_IN)
 begin   
     if swap_inputbits = '1' then
-        edata_in_s <= EDATA_IN(0) & EDATA_IN(1) & EDATA_IN(2) & EDATA_IN(3) & EDATA_IN(4) & EDATA_IN(5) & EDATA_IN(6) & EDATA_IN(7);
+        edata_in_s <= EDATA_IN(0) & EDATA_IN(1) & EDATA_IN(2) & EDATA_IN(3)
+                   &  EDATA_IN(4) & EDATA_IN(5) & EDATA_IN(6) & EDATA_IN(7);
     else
         edata_in_s <= EDATA_IN;
-    end if;	   
-end process; 
+    end if;    
+end process;
 
 -------------------------------------------------------------------------------------------
 -- case 0: direct & 8b10b ENCODING b00 / b01

@@ -20,7 +20,11 @@ use std.textio.all;
 
 --! consists of 1 E-path
 entity elinkInterface_top is
-generic(do_serialize : boolean := true);
+generic(
+    elinkRate       	: integer := 80; -- 80 / 160 / 320 / 640 MHz
+    elinkEncoding       : std_logic_vector (1 downto 0) := "10"; -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+	do_serialize 		: boolean := true
+);
 port (  
     clk_200_in_n    : in  std_logic;
     clk_200_in_p    : in  std_logic;
@@ -138,7 +142,7 @@ clk40_out <= clk40;
 rst0: entity work.CRresetManager 
 port map ( 
     clk40           => clk40,
-    rst_soft        => rst_sw,
+    rst		        => rst_sw,
     cr_rst          => rst,
     cr_fifo_flush   => fifo_flush
     );

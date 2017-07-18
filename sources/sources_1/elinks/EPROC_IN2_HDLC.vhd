@@ -185,7 +185,7 @@ dataOUTrdy      <= dataOUTrdy_s and ena; -- @ bitCLKx2
 process(bitCLKx2)
 begin
     if rising_edge(bitCLKx2) then 
-        if bit_in_sr /= x"ff" then 
+        if bit_in_sr /= x"ff" then --IG: problematic exit condition due to 7 ones and not 8 in the shift register, replace the error_out signal with error_state_r
             error_out <= '0'; 
         elsif error_state = '1' then
             error_out <= '1'; 
@@ -198,7 +198,8 @@ begin
     if rst = '1' then
         error_bit_cnt <= (others=>'0');
     elsif bitCLKx2'event and bitCLKx2 = '1' then
-        if error_out = '0' then
+--IG        if error_out = '0' then
+        if (error_state_r = '0') then --IG
             error_bit_cnt <= (others=>'0');
         else
             error_bit_cnt <= error_bit_cnt + 1;
@@ -206,7 +207,8 @@ begin
     end if;
 end process;
 --
-error_out_rdy <= '1' when (error_bit_cnt = "001" and error_out = '1') else '0';
+--IG error_out_rdy <= '1' when (error_bit_cnt = "001" and error_out = '1') else '0';
+error_out_rdy <= '1' when ((error_bit_cnt = "001") and (error_state_r = '1')) else '0';
 --
 process(bitCLKx2)
 begin
@@ -216,7 +218,8 @@ begin
 		elsif error_state_r = '0' and isflag = '1' then
 			dataOUT(9 downto 8) <= "01"; -- eop
 		else
-			dataOUT(9 downto 8) <= error_out & error_out; -- 00-data, 11-error
+--IG			dataOUT(9 downto 8) <= error_out & error_out; -- 00-data, 11-error
+			dataOUT(9 downto 8) <= error_state_r & error_state_r; -- 00-data, 11-error
 		end if;  
     end if;
 end process;

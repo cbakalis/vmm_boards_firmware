@@ -213,23 +213,16 @@ end component;
     -- debugging
     attribute mark_debug of dout_elink2fifo     : signal is "true";
     attribute dont_touch of dout_elink2fifo     : signal is "true";
-    
     attribute mark_debug of rd_ena              : signal is "true";
-    attribute mark_debug of driver_ena_s1       : signal is "true";
-    attribute mark_debug of tester_ena_s1       : signal is "true";
+    
     attribute mark_debug of empty_elink_tx      : signal is "true";
     attribute mark_debug of empty_elink_rx      : signal is "true";
-    attribute mark_debug of elink_tx_i          : signal is "true";
-    attribute mark_debug of elink_rx_i          : signal is "true";
-    attribute mark_debug of sel_din             : signal is "true";
+    
+--    attribute mark_debug of elink_tx_i          : signal is "true";
+--    attribute mark_debug of elink_rx_i          : signal is "true";
     
     attribute mark_debug of data_elink_tx       : signal is "true";
     attribute mark_debug of wr_en_elink_tx      : signal is "true";
-    attribute mark_debug of data_elink_tester   : signal is "true";
-    attribute mark_debug of wr_en_elink_tester  : signal is "true";
-    attribute mark_debug of data_elink_daq      : signal is "true";
-    attribute mark_debug of wr_en_elink_daq     : signal is "true";
-    attribute mark_debug of loopback_ena        : signal is "true";
     
 
 begin
@@ -297,6 +290,9 @@ port map(
 
 end generate UseTX;
 
+-- UNCOMMENT ME IF WANT TO USE RX @ 320Mbps
+--UseRX: if DataRate /= 320 generate
+
 elink_rx_instance: Elink2FIFO
 generic map( InputDataRate  => DataRate, -- 80 / 160 / 320 MHz
              elinkEncoding  => elinkEncoding) -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding
@@ -322,6 +318,8 @@ port map(
     efifoDout   => dout_elink2fifo
     ------
     );
+    
+--end generate UseRX;
 
 -- use TTC signal recognition module
 UseTTC: if elinkEncoding = "00" generate

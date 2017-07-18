@@ -47,6 +47,11 @@ signal direct10bData : std_logic_vector (9 downto 0) := "1100000000";
 signal byte_in,byte_1 : std_logic_vector(9 downto 0) := (others => '0');
 signal byte_in_rdy,byte_1_rdy : std_logic := '0';
 
+attribute mark_debug                        : string;
+attribute mark_debug of EDATAbitstreamSREG  : signal is "true";
+attribute mark_debug of comma_valid_bits_or : signal is "true";
+attribute mark_debug of alignment_sreg      : signal is "true";
+
 begin
 
 -------------------------------------------------------------------------------------------

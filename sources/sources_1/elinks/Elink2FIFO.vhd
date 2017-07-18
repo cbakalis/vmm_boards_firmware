@@ -59,8 +59,6 @@ signal BWORD        : std_logic_vector(15 downto 0);
 attribute mark_debug                : string;
 attribute mark_debug of DATA_OUT    : signal is "true";
 attribute mark_debug of DATA_RDY    : signal is "true";
-attribute mark_debug of BWORD       : signal is "true";
-attribute mark_debug of BWORD_RDY   : signal is "true";
 
 begin
 
@@ -98,17 +96,21 @@ end generate GBT_frame_case;
 --
 
 EPROC_IN2bit: entity work.EPROC_IN2 
-port map (
-	bitCLK     => clk40,
-	bitCLKx2   => clk80,
-	rst        => rst,
-	ENA        => '1', -- always enabled here
-	swap_inputbits => swap_input, -- when '1', the input bits will be swapped
-	ENCODING   => elinkEncoding,  -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
-	EDATA_IN   => DATA2bitIN, -- @ 40MHz
-	DATA_OUT   => DATA_OUT,  -- 10-bit data out
-	DATA_RDY   => DATA_RDY
-);
+generic map (
+    		do_generate             => true,
+    		includeNoEncodingCase   => true
+    		)
+port map( 
+			bitCLK     => clk40,
+			bitCLKx2   => clk80,
+			rst        => rst,
+			ENA        => '1', -- always enabled here
+			swap_inputbits => swap_input, -- when '1', the input bits will be swapped
+			ENCODING   => elinkEncoding,  -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+			EDATA_IN   => DATA2bitIN, -- @ 40MHz
+			DATA_OUT   => DATA_OUT,  -- 10-bit data out
+			DATA_RDY   => DATA_RDY
+		);
 
 end generate InputDataRate80; 
 
@@ -148,15 +150,19 @@ end generate GBT_frame_case;
 --
 
 EPROC_IN4bit: entity work.EPROC_IN4 
-port map (
-	bitCLK     => clk40,
-	rst        => rst,
-	ENA        => '1', -- always enabled here
-	swap_inputbits => swap_input,
-	ENCODING   => elinkEncoding,  -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
-	EDATA_IN   => DATA4bitIN, -- @ 40MHz
-	DATA_OUT   => DATA_OUT,  -- 10-bit data out
-	DATA_RDY   => DATA_RDY
+generic map (
+    		do_generate             => true,
+    		includeNoEncodingCase   => true
+    		)
+port map( 
+			bitCLK     => clk40,
+			rst        => rst,
+			ENA        => '1', -- always enabled here
+			swap_inputbits => swap_input, -- when '1', the input bits will be swapped
+			ENCODING   => elinkEncoding,  -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+			EDATA_IN   => DATA4bitIN, -- @ 40MHz
+			DATA_OUT   => DATA_OUT,  -- 10-bit data out
+			DATA_RDY   => DATA_RDY
 );
 
 end generate InputDataRate160; 
@@ -199,16 +205,20 @@ end generate GBT_frame_case;
 --
 
 EPROC_IN8bit: entity work.EPROC_IN8 
-port map (
-	bitCLK     => clk40,
-	rst        => rst,
-	ENA        => '1', -- always enabled here
-	ENCODING   => elinkEncoding,  -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding
-	swap_inputbits => swap_input,
-	EDATA_IN   => DATA8bitIN, -- @ 40MHz
-	DATA_OUT   => DATA_OUT,  -- 10-bit data out
-	DATA_RDY   => DATA_RDY
-);
+generic map (
+    		do_generate             => true,
+    		includeNoEncodingCase   => true
+    		)
+port map( 
+			bitCLK     => clk40,
+			rst        => rst,
+			ENA        => '1', -- always enabled here
+			ENCODING   => elinkEncoding,  -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+			swap_inputbits => swap_input, -- when '1', the input bits will be swapped
+			EDATA_IN   => DATA8bitIN, -- @ 40MHz
+			DATA_OUT   => DATA_OUT,  -- 10-bit data out
+			DATA_RDY   => DATA_RDY
+		);
 
 end generate InputDataRate320; 
 
@@ -220,17 +230,21 @@ end generate InputDataRate320;
 InputDataRate640: if InputDataRate = 640 generate
 --
 EPROC_IN16bit: entity work.EPROC_IN16 
-port map (
-	bitCLK     => clk40,
-	bitCLKx2   => clk80,
-	bitCLKx4   => clk160,
-	rst        => rst,
-	ENA        => '1', -- always enabled here
-	ENCODING   => elinkEncoding,  -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
-	EDATA_IN   => elink16bit, -- @ 40MHz
-	DATA_OUT   => DATA_OUT,  -- 10-bit data out
-	DATA_RDY   => DATA_RDY
-);
+generic map (
+    		do_generate             => true,
+    		includeNoEncodingCase   => true
+    		)
+port map(
+			bitCLK     => clk40,
+			bitCLKx2   => clk80,
+			bitCLKx4   => clk160,
+			rst        => rst,
+			ENA        => '1', -- always enabled here
+			ENCODING   => elinkEncoding,  -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+			EDATA_IN   => elink16bit, -- @ 40MHz
+			DATA_OUT   => DATA_OUT,  -- 10-bit data out
+			DATA_RDY   => DATA_RDY
+		);
 --
 end generate InputDataRate640; 
 
@@ -242,31 +256,27 @@ end generate InputDataRate640;
 ------------------------------------------------------------
 efd: entity work.EPROC_FIFO_DRIVER 
 generic map(
-    GBTid       => 0, -- no use
-    egroupID    => 0, -- no use
-    epathID     => 0  -- no use
+    GBTid       		=> 0, -- no use
+    egroupID    		=> 0, -- no use
+    epathID     		=> 0,  -- no use
+    toHostTimeoutBitn   => 8
     )
 port map (
     clk40           => clk40,
     clk160          => clk160,
     rst             => rst,
-    --
-    encoding        => elinkEncoding, -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+    encoding        => elinkEncoding,--IG "10", -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
     maxCLEN         => "000", -- 000-not limit on packet length
-    --
     raw_DIN         => DATA_OUT,  -- 10-bit data in
     raw_DIN_RDY     => DATA_RDY,
-    --
     xoff            => almost_full,
     timeCntIn       => x"00", -- not in use
     TimeoutEnaIn    => '0',  -- not in use
     instTimeoutEnaIn=> '0',
-    --
     wordOUT         => BWORD, -- 16-bit block word
     wordOUT_RDY     => BWORD_RDY,
-    --
-    busyOut         => open
-    );
+    busyOut         => open -- not in use here 
+       );
 
 
 ------------------------------------------------------------
@@ -283,6 +293,7 @@ port map (
     rd_en       => efifoRe,
     dout        => efifoDout,
     almost_full => almost_full,
+    fifo_empty  => efifoEmpty,
     prog_full   => efifoHF -- Half-Full - output: 1Kbyte block is ready
     );
 

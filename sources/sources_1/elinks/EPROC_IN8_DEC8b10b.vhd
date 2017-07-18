@@ -50,12 +50,10 @@ signal direct10bData : std_logic_vector(9 downto 0) := (others => '0');
 signal direct10bDataRdy,send_state,dataOUTrdy_s : std_logic := '0';
 signal byte_count : std_logic_vector(1 downto 0) := "00";
 
---
-attribute mark_debug                          : string;
-attribute mark_debug of EDATAbitstreamSREG    : signal is "true";
-attribute mark_debug of alignment_sreg        : signal is "true";
-attribute mark_debug of comma_valid_bits      : signal is "true";
-attribute mark_debug of align_select          : signal is "true";
+attribute mark_debug                        : string;
+attribute mark_debug of EDATAbitstreamSREG  : signal is "true";
+attribute mark_debug of comma_valid_bits_or : signal is "true";
+attribute mark_debug of alignment_sreg      : signal is "true";
 
 begin
 

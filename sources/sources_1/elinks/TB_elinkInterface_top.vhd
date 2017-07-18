@@ -24,6 +24,11 @@ ARCHITECTURE behavior OF TB_elinkInterface_top IS
 
 -- Component Declaration for the Unit Under Test (UUT)
 component elinkInterface_top 
+generic(
+    elinkRate       	: integer := 80; -- 80 / 160 / 320 / 640 MHz
+    elinkEncoding       : std_logic_vector (1 downto 0) := "10"; -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+	do_serialize 		: boolean := true
+);
 port (  
     clk_200_in_n    : in  std_logic;
     clk_200_in_p    : in  std_logic;
@@ -58,13 +63,22 @@ signal sim_rdy : std_logic := '0';
 constant clk_200_period     : time := 5 ns;
 constant clk40_period       : time := 25 ns;
 constant clk_320_period     : time := 3.125 ns;
- 
+
+-- Elink Constants
+constant elinkRate       	: integer := 80; -- 80 / 160 / 320 / 640 MHz
+constant elinkEncoding      : std_logic_vector (1 downto 0) := "10"; -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+constant do_serialize 		: boolean := true;
  
 BEGIN
 
  
 -- Instantiate the Unit Under Test (UUT)
 uut: component elinkInterface_top 
+generic map(
+    elinkRate       	=> elinkRate, -- 80 / 160 / 320 / 640 MHz
+    elinkEncoding       => elinkEncoding, -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+	do_serialize 		=> do_serialize
+)
 port map (  
     clk_200_in_n    => clk_200_in_n,
     clk_200_in_p    => clk_200_in_p,

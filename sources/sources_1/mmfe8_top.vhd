@@ -207,19 +207,22 @@ entity mmfe8_top is
 
         ---- E-link Interface, Data
         -----------------------------------------
-        --ELINK_DAQ_TX_P        : OUT   STD_LOGIC;
-        --ELINK_DAQ_TX_N        : OUT   STD_LOGIC;
-        --ELINK_DAQ_RX_P        : IN    STD_LOGIC;
-        --ELINK_DAQ_RX_N        : IN    STD_LOGIC;
+        ELINK_DAQ_TX_P        : OUT   STD_LOGIC;
+        ELINK_DAQ_TX_N        : OUT   STD_LOGIC;
+        ELINK_DAQ_RX_P        : IN    STD_LOGIC;
+        ELINK_DAQ_RX_N        : IN    STD_LOGIC;
         --ELINK_TTC_RX_P        : IN    STD_LOGIC;
         --ELINK_TTC_RX_N        : IN    STD_LOGIC;
 
         ---- E-link Interface, Clock
         -----------------------------------------
-        --ELINK_DAQ_CLK_P       : IN    STD_LOGIC;
-        --ELINK_DAQ_CLK_N       : IN    STD_LOGIC;
+        ELINK_DAQ_CLK_P       : IN    STD_LOGIC;
+        ELINK_DAQ_CLK_N       : IN    STD_LOGIC;
         --ELINK_TTC_CLK_P       : IN    STD_LOGIC;
         --ELINK_TTC_CLK_N       : IN    STD_LOGIC;
+        
+        -- E-link MMCM locked LED
+        LED_LOCKED            : OUT   STD_LOGIC;
 
         -- AXI4SPI Flash Configuration
         ---------------------------------------
@@ -342,6 +345,8 @@ architecture Behavioral of mmfe8_top is
     signal clk_10_phase45_daq : std_logic;
     signal clk_50_daq         : std_logic;
     signal clk_40_daq         : std_logic;
+    signal clk_200_i          : std_logic;
+    signal mmcm_delay_locked  : std_logic;
     
     signal clk_320_ttc        : std_logic;
     signal clk_80_ttc         : std_logic;
@@ -533,6 +538,14 @@ architecture Behavioral of mmfe8_top is
     signal elink_DAQ_tx         : std_logic := '0';
     signal elink_DAQ_rx         : std_logic := '0';
     signal elink_TTC_rx         : std_logic := '0';
+    ------
+    signal tap_increase         : std_logic := '0';
+    signal tap_decrease         : std_logic := '0';
+    signal tap_rst              : std_logic := '0';
+    signal ctrl_rst             : std_logic := '0';
+    signal rdy_all              : std_logic := '0';
+    signal cnt_delay            : std_logic_vector(4 downto 0) := (others => '0');
+    signal sel_tx               : std_logic := '0';
 
     -------------------------------------------------
     -- Flow FSM signals
@@ -574,6 +587,7 @@ architecture Behavioral of mmfe8_top is
     attribute keep          : string;
     attribute dont_touch    : string;
     attribute mark_debug    : string;
+    attribute IOB           : string;
   
     -------------------------------------------------------------------
     -- Readout Monitoring
@@ -684,7 +698,25 @@ architecture Behavioral of mmfe8_top is
     attribute keep of swap_rx                 : signal is "TRUE";
     attribute keep of swap_tx                 : signal is "TRUE";
     attribute keep of selDAQelinkUDP          : signal is "TRUE";
-
+    
+    attribute keep of tap_increase            : signal is "TRUE";
+    attribute keep of tap_decrease            : signal is "TRUE";
+    attribute keep of tap_rst                 : signal is "TRUE";
+    attribute keep of ctrl_rst                : signal is "TRUE";
+    attribute keep of rdy_all                 : signal is "TRUE";
+    attribute keep of cnt_delay               : signal is "TRUE";
+    attribute keep of mmcm_delay_locked       : signal is "TRUE";
+    attribute keep of sel_tx                  : signal is "TRUE";
+    
+    attribute dont_touch of tap_increase      : signal is "TRUE";
+    attribute dont_touch of tap_decrease      : signal is "TRUE";
+    attribute dont_touch of tap_rst           : signal is "TRUE";
+    attribute dont_touch of ctrl_rst          : signal is "TRUE";
+    attribute dont_touch of rdy_all           : signal is "TRUE";
+    attribute dont_touch of cnt_delay         : signal is "TRUE";
+    attribute dont_touch of mmcm_delay_locked : signal is "TRUE";
+    attribute dont_touch of sel_tx            : signal is "TRUE";
+    
     attribute dont_touch of pattern_enable    : signal is "TRUE";
     attribute dont_touch of daq_enable        : signal is "TRUE";
     attribute dont_touch of loopback_enable   : signal is "TRUE";
@@ -695,6 +727,11 @@ architecture Behavioral of mmfe8_top is
     attribute dont_touch of swap_rx           : signal is "TRUE";
     attribute dont_touch of swap_tx           : signal is "TRUE";
     attribute dont_touch of selDAQelinkUDP    : signal is "TRUE";
+    
+    attribute IOB of ELINK_DAQ_TX_P    : signal is "TRUE";
+    attribute IOB of ELINK_DAQ_TX_N    : signal is "TRUE";
+    attribute IOB of ELINK_DAQ_RX_P    : signal is "TRUE";
+    attribute IOB of ELINK_DAQ_RX_N    : signal is "TRUE";
                
     -------------------------------------------------------------------
     --                       COMPONENTS                              --
@@ -1327,7 +1364,34 @@ architecture Behavioral of mmfe8_top is
         reset           : in    std_logic;
         locked          : out   std_logic
      );
-    end component;  
+    end component;
+    -- 24
+    component clk_wiz_board
+    port
+     (  -- Clock in ports
+        clk_in1_p   : in  std_logic;
+        clk_in1_n   : in  std_logic;
+        -- Clock out ports
+        clk_out_200 : out std_logic;
+        -- Status and control signals
+        reset       : in  std_logic;
+        locked      : out std_logic
+     );
+    end component;
+    -- 25
+    COMPONENT vio_del
+      PORT (
+        clk         : IN  STD_LOGIC;
+        probe_in0   : IN  STD_LOGIC_VECTOR(0 DOWNTO 0);
+        probe_in1   : IN  STD_LOGIC_VECTOR(0 DOWNTO 0);
+        probe_in2   : IN  STD_LOGIC_VECTOR(4 DOWNTO 0);
+        probe_out0  : OUT STD_LOGIC_VECTOR(0 DOWNTO 0);
+        probe_out1  : OUT STD_LOGIC_VECTOR(0 DOWNTO 0);
+        probe_out2  : OUT STD_LOGIC_VECTOR(0 DOWNTO 0);
+        probe_out3  : OUT STD_LOGIC_VECTOR(0 DOWNTO 0);
+        probe_out4  : OUT STD_LOGIC_VECTOR(0 DOWNTO 0)
+      );
+    END COMPONENT;
 
 begin
 
@@ -1624,8 +1688,8 @@ mmcm_master: master_clk
        reset            => rst_elink_mmcm, -- used to be gnd
        locked           => clk_daq_locked,
        -- Clock in ports
-       clk_in1_p        => X_2V5_DIFF_CLK_P, --ELINK_DAQ_CLK_P
-       clk_in1_n        => X_2V5_DIFF_CLK_N  --ELINK_DAQ_CLK_N (DONT FORGET TO CHANGE INPUT FREQ!)
+       clk_in1_p        => ELINK_DAQ_CLK_P,
+       clk_in1_n        => ELINK_DAQ_CLK_N
        );
 
 event_timing_reset_instance: event_timing_reset
@@ -1926,7 +1990,7 @@ vmm_oddr_inst: vmm_oddr_wrapper
 
 -- DAQ path E-link
 DAQ_ELINK: elink_wrapper
-    generic map(DataRate      => 320,
+    generic map(DataRate      => 80,
                 elinkEncoding => "01")
     port map(
         ---------------------------------
@@ -2009,6 +2073,18 @@ DAQ_ELINK: elink_wrapper
 --   clk_in1_n => ELINK_TTC_CLK_N
 --   );
 
+mmcm_board: clk_wiz_board
+   port map ( 
+  -- Clock out ports  
+   clk_out_200 => clk_200_i,
+  -- Status and control signals                
+   reset => '0',
+   locked => mmcm_delay_locked,
+   -- Clock in ports
+   clk_in1_p => X_2V5_DIFF_CLK_P,
+   clk_in1_n => X_2V5_DIFF_CLK_N
+ );
+
 vio_elink_instance: vio_elink
     PORT MAP(
         clk             => userclk2,
@@ -2026,6 +2102,19 @@ vio_elink_instance: vio_elink
         probe_out0(9)   => selDAQelinkUDP(0),
         probe_out0(10)  => selDAQelinkUDP(1)
         );
+        
+--vio_idelay : vio_del
+--    PORT MAP (
+--        clk             => clk_200_i,
+--        probe_in0(0)    => rdy_all,
+--        probe_in1(0)    => mmcm_delay_locked,
+--        probe_in2       => cnt_delay,
+--        probe_out0(0)   => tap_increase,
+--        probe_out1(0)   => tap_decrease,
+--        probe_out2(0)   => tap_rst,
+--        probe_out3(0)   => ctrl_rst,
+--        probe_out4(0)   => sel_tx
+--    );
 
 DAQelinkUDPdemux_proc: process(selDAQelinkUDP, daq_data_out_pf_i, daq_wr_en_pf_i)
 begin
@@ -2059,18 +2148,13 @@ begin
 end process;
 
 ---------------------------- E-LINK BUFFERS -----------------------------------------------------------------------
---elink_tx_daq_buf: OBUFDS generic map  (IOSTANDARD => "DEFAULT" , SLEW => "FAST")
---                         port map     (O =>  ELINK_DAQ_TX_P, OB => ELINK_DAQ_TX_N, I =>  elink_DAQ_tx);
---elink_rx_daq_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT" , DIFF_TERM => TRUE)
---                         port map     (O =>  elink_DAQ_rx, I =>  ELINK_DAQ_RX_P, IB => ELINK_DAQ_RX_N);    
+elink_tx_daq_buf: OBUFDS generic map  (IOSTANDARD => "DEFAULT" , SLEW => "FAST")
+                         port map     (O =>  ELINK_DAQ_TX_P, OB => ELINK_DAQ_TX_N, I =>  elink_DAQ_tx);
+elink_rx_daq_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT", IBUF_LOW_PWR => FALSE, DIFF_TERM => TRUE)
+                         port map     (O =>  elink_DAQ_rx, I =>  ELINK_DAQ_RX_P, IB => ELINK_DAQ_RX_N);    
 --elink_rx_ttc_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT" , DIFF_TERM => TRUE)
 --                         port map     (O =>  elink_TTC_rx, I =>  ELINK_TTC_RX_P, IB => ELINK_TTC_RX_N);
 -------------------------------------------------------------------------------------------------------------------
-
------------------------------- clk_200 global buffer --------------------------------------------------------------
---IBUFGDS_clk_200 : IBUFGDS
---    generic map( DIFF_TERM => FALSE, IBUF_LOW_PWR => FALSE, IOSTANDARD => "DEFAULT")
---    port map   (O => clk_200_i, I => X_2V5_DIFF_CLK_P, IB => X_2V5_DIFF_CLK_N);
 -------------------------------------------------------------------------------------------------------------------
 
 ----------------------------------------------------DI-------------------------------------------------------------
@@ -2199,6 +2283,8 @@ xadc_mux3_obufds: OBUFDS port map  (O => MuxAddr3_p, OB => MuxAddr3_n, I => MuxA
 
 ----------------------------------------------------TRIGGER--------------------------------------------------------------
 ext_trg_diff_1:  IBUFDS port map (O =>  ext_trigger_i,   I => EXT_TRIGGER_P, IB => EXT_TRIGGER_N);
+
+led_obuf:        OBUF   port map (O => LED_LOCKED, I => clk_daq_locked);
  
 -------------------------------------------------------------------
 --                        Processes                              --

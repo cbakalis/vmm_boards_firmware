@@ -88,20 +88,24 @@ port map(
 OutputDataRate80: if OutputDataRate = 80 generate
 
 EPROC_OUT2bit: entity work.EPROC_OUT2 
+generic map (
+    		do_generate             => true,
+    		includeNoEncodingCase   => true
+    		)
 port map(
-	bitCLK     => clk40,
-	bitCLKx2   => clk80,
-	bitCLKx4   => clk160,
-	rst        => rst,
-	ENA        => '1', -- always enabled here
-	swap_outbits => swap_output, -- when '1', the output bits will be swapped
-	getDataTrig => efifoRE,
-	ENCODING   => ("00" & elinkEncoding), -- 0000-direct data / 0001-8b10b encoding / 0010-HDLC encoding / others are used for TTC formats
-	EDATA_OUT  => dout2bit, -- @ 40MHz
-	TTCin      => "00", -- not in use here
-	DATA_IN    => efifoDout,  -- 10-bit data in
-	DATA_RDY   => doutRdy
-);
+			bitCLK     => clk40,
+			bitCLKx2   => clk80,
+			bitCLKx4   => clk160,
+			rst        => rst,
+			ENA        => '1', -- always enabled here
+			swap_outbits => swap_output, -- when '1', the output bits will be swapped
+			getDataTrig => efifoRE,
+			ENCODING   => ("00" & elinkEncoding), -- 0000-direct data / 0001-8b10b encoding / 0010-HDLC encoding / others are used for TTC formats
+			EDATA_OUT  => dout2bit, -- @ 40MHz
+			TTCin      => "00", -- not in use here
+			DATA_IN    => efifoDout,  -- 10-bit data in
+			DATA_RDY   => doutRdy
+		);
 --
 -------------------------------------------
 -- serialization of the 2-bit data output:
@@ -149,20 +153,24 @@ end generate OutputDataRate80;
 OutputDataRate160: if OutputDataRate = 160 generate
 
 EPROC_OUT4bit: entity work.EPROC_OUT4 
+generic map (
+    		do_generate             => true,
+    		includeNoEncodingCase   => true
+    		)
 port map(
-	bitCLK     => clk40,
-	bitCLKx2   => clk80,
-	bitCLKx4   => clk160,
-	rst        => rst,
-	ENA        => '1', -- always enabled here
-	swap_outbits => swap_output,
-	getDataTrig => efifoRE,
-	ENCODING   => ("00" & elinkEncoding), -- 0000-direct data / 0001-8b10b encoding / 0010-HDLC encoding / others are used for TTC formats
-	EDATA_OUT  => dout4bit, -- @ 40MHz
-	TTCin      => "00000", -- not in use here
-	DATA_IN    => efifoDout, -- 10-bit data in
-	DATA_RDY   => doutRdy
-);
+			bitCLK     => clk40,
+			bitCLKx2   => clk80,
+			bitCLKx4   => clk160,
+			rst        => rst,
+			ENA        => '1', -- always enabled here
+			swap_outbits => swap_output, -- when '1', the output bits will be swapped
+			getDataTrig => efifoRE,
+			ENCODING   => ("00" & elinkEncoding), -- 0000-direct data / 0001-8b10b encoding / 0010-HDLC encoding / others are used for TTC formats
+			EDATA_OUT  => dout4bit, -- @ 40MHz
+			TTCin      => "00000", -- not in use here
+			DATA_IN    => efifoDout, -- 10-bit data in
+			DATA_RDY   => doutRdy
+		);
 --
 -------------------------------------------
 -- serialization of the 4-bit data output:
@@ -213,20 +221,24 @@ end generate OutputDataRate160;
 OutputDataRate320: if OutputDataRate = 320 generate
 
 EPROC_OUT8bit: entity work.EPROC_OUT8 
+generic map (
+    		do_generate             => true,
+    		includeNoEncodingCase   => true
+    		)
 port map(
-	bitCLK     => clk40,
-	bitCLKx2   => clk80,
-	bitCLKx4   => clk160,
-	rst        => rst,
-	ENA        => '1', -- always enabled here
-	swap_outbits => swap_output,
-	getDataTrig => efifoRE,
-	ENCODING   => ("00" & elinkEncoding), -- 0000-direct data / 0001-8b10b encoding / 0010-HDLC encoding / others are used for TTC formats
-	EDATA_OUT  => dout8bit, -- @ 40MHz
-	TTCin      => "000000000", -- not in use here
-	DATA_IN    => efifoDout, -- 10-bit data in
-	DATA_RDY   => doutRdy
-);
+			bitCLK     => clk40,
+			bitCLKx2   => clk80,
+			bitCLKx4   => clk160,
+			rst        => rst,
+			ENA        => '1', -- always enabled here
+			getDataTrig => efifoRE,
+            swap_outbits => swap_output,
+			ENCODING   => ("00" & elinkEncoding), -- 0000-direct data / 0001-8b10b encoding / 0010-HDLC encoding / others are used for TTC formats
+			EDATA_OUT  => dout8bit, -- @ 40MHz
+			TTCin      => "000000000", -- not in use here
+			DATA_IN    => efifoDout, -- 10-bit data in
+			DATA_RDY   => doutRdy
+		);
 --
 -------------------------------------------
 -- serialization of the 8-bit data output:

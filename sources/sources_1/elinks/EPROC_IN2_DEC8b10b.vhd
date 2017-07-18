@@ -39,6 +39,11 @@ signal comma_valid_bits : std_logic_vector (1 downto 0);
 signal alignment_sreg   : std_logic_vector (4 downto 0) := (others=>'0');
 signal inpcount : std_logic_vector (1 downto 0) := (others=>'0');
 
+attribute mark_debug                        : string;
+attribute mark_debug of EDATAbitstreamSREG  : signal is "true";
+attribute mark_debug of comma_valid_bits_or : signal is "true";
+attribute mark_debug of alignment_sreg      : signal is "true";
+
 begin
 
 -------------------------------------------------------------------------------------------
