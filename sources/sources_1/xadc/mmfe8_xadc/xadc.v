@@ -300,7 +300,7 @@ end
 always @(posedge clk125)
 begin
     if (data_in_rdy == 1'b1)
-        vmm_id_r <= 15'b0;
+        vmm_id_r <= vmm_id - 1'b1;
         
 end
 
