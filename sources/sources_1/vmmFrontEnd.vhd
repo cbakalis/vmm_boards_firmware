@@ -198,13 +198,21 @@ entity vmmFrontEnd is
         CKART_ADDC_P          : OUT std_logic;
         CKART_ADDC_N          : OUT std_logic;
         
-        -- MDT_446/MDT_MU2E Specific Pins
+        -- MDT_446/MDT_MU2E/MMFE1 Specific Pins
         --------------------------------------
         TRIGGER_OUT_P         : OUT std_logic;
         TRIGGER_OUT_N         : OUT std_logic;
-        CH_TRIGGER            : IN  std_logic;
+        LEMO_TRIGGER          : IN  std_logic;
         MO                    : OUT std_logic;
         ART_OUT_P,  ART_OUT_N : OUT std_logic;
+        LOCKED_LED            : OUT std_logic;
+        
+        -- CTF RST BCCLK
+        --------------------------------------
+        CTF_CLK_P              : IN  std_logic;
+        CTF_CLK_N              : IN  std_logic;
+        CTF_RST_P              : IN  std_logic;
+        CTF_RST_N              : IN  std_logic;
 
         -- xADC Interface
         --------------------------------------
@@ -269,7 +277,7 @@ architecture Behavioral of vmmFrontEnd is
     -- Set to '1' for MMFE8 or '0' for 1-VMM boards
     constant is_mmfe8       : std_logic := '0';
     -- Set to '0' for continuous readout mode or '1' for L0 readout mode
-    constant vmmReadoutMode : std_logic := '1';
+    constant vmmReadoutMode : std_logic := '0';
     -- Set to '1' to enable the ART header
     constant artEnabled     : std_logic := '1';
 
@@ -453,12 +461,16 @@ architecture Behavioral of vmmFrontEnd is
     signal tr_reset           : std_logic := '0';
     signal tr_out_i           : std_logic;
     signal trig_mode_int      : std_logic := '0';   
-    signal CH_TRIGGER_i       : std_logic := '0';
+    signal LEMO_TRIGGER_i     : std_logic := '0';
+    signal EXT_TRIGGER_i      : std_logic := '0';
     signal request2ckbc       : std_logic := '0';
     signal trraw_synced125_i  : std_logic := '0';
     signal accept_wr          : std_logic := '0';
     signal vmmArtData         : std_logic_vector(5 downto 0) := (others => '0');
     signal vmmArtReady        : std_logic := '0';
+    signal ctf_rst_i          : std_logic := '0';
+    signal ctf_rst_s0         : std_logic := '0';
+    signal ctf_rst_s1         : std_logic := '0';
   
     -------------------------------------------------
     -- Event Timing & Soft Reset
@@ -552,7 +564,7 @@ architecture Behavioral of vmmFrontEnd is
     -------------------------------------------------
     -- Flow FSM signals
     -------------------------------------------------
-    type state_t is (IDLE, WAIT_FOR_CONF, CONFIGURE, CONF_DONE, CONFIGURE_DELAY, SEND_CONF_REPLY, DAQ_INIT, FIRST_RESET, TRIG, DAQ, XADC_init, XADC_wait, FLASH_init, FLASH_wait);
+    type state_t is (IDLE, WAIT_FOR_CONF, CONFIGURE, CONF_DONE, CONFIGURE_DELAY, SEND_CONF_REPLY, DAQ_INIT, VMM_SOFT_RST, TRIG, DAQ, XADC_init, XADC_wait, FLASH_init, FLASH_wait);
     signal state        : state_t := IDLE;
     signal rstFIFO_top  : std_logic := '0';
 
@@ -574,6 +586,8 @@ architecture Behavioral of vmmFrontEnd is
     -------------------------------------------------------------------
     attribute ASYNC_REG                         : string;
     attribute ASYNC_REG of pma_reset_pipe       : signal is "TRUE";
+    attribute ASYNC_REG of ctf_rst_s0           : signal is "TRUE";
+    attribute ASYNC_REG of ctf_rst_s1           : signal is "TRUE";
   
     -------------------------------------------------------------------
     -- Keep signals for ILA
@@ -742,7 +756,10 @@ architecture Behavioral of vmmFrontEnd is
 --    attribute mark_debug of pf_trigVmmRo              : signal is "TRUE";
 --    attribute mark_debug of dt_cntr_st                : signal is "TRUE";
 --    attribute mark_debug of linkHealth_bmsk           : signal is "TRUE";
-    
+
+--    attribute mark_debug of EXT_TRIGGER_i             : signal is "TRUE";
+--    attribute mark_debug of ctf_rst_s1                : signal is "TRUE";
+
     -------------------------------------------------------------------
     -- Other
     -------------------------------------------------------------------   
@@ -1704,8 +1721,8 @@ udp_reply_instance: udp_reply_handler
 mmcm_master: clk_wiz_gen    
     port map (
         -- Clock in ports
-        clk_in1_p   => X_2V5_DIFF_CLK_P,
-        clk_in1_n   => X_2V5_DIFF_CLK_N,
+        clk_in1_p   => CTF_CLK_P, -- X_2V5_DIFF_CLK_P
+        clk_in1_n   => CTF_CLK_N,
         -- Clock out ports  
         clk_out_160 => clk_160,
         clk_out_500 => clk_500,
@@ -1801,7 +1818,7 @@ trigger_instance: trigger
         tren            => tren,                -- Trigger module enabled
         tr_hold         => tr_hold,             -- Prevents trigger while high
         trmode          => trig_mode_int,       -- Mode 0: internal / Mode 1: external
-        trext           => CH_TRIGGER_i,        -- External trigger is to be driven to this port
+        trext           => EXT_TRIGGER_i,       -- External trigger is to be driven to this port
         level_0         => level_0,              -- Level-0 accept signal
         accept_wr       => accept_wr,
 
@@ -2064,7 +2081,6 @@ vmm_oddr_inst: vmm_oddr_wrapper
         ckart_toBuf_vec => ckart_vec
         -------------------------------------------------------
     );
-    
 
 ----------------------------------------------------CS------------------------------------------------------------
 cs_obuf_1:  OBUF  port map  (O => CS_1, I => vmm_cs_vec_obuf(1));
@@ -2214,6 +2230,11 @@ art_diff_1: IBUFDS port map ( O => art_in_vec(1), I => ART_1_P, IB => ART_1_N);
 
 ckart_addc_buf: OBUFDS port map ( O => CKART_ADDC_P, OB => CKART_ADDC_N, I => ckart_vec(9));
 
+----------------------------------------------------TRIGGER/CTF----------------------------------------------------------------
+CTF_rst_in:   IBUFDS generic map(DIFF_TERM => TRUE, IBUF_LOW_PWR => FALSE) port map (O => ctf_rst_i, I => CTF_RST_P, IB => CTF_RST_N);
+trig_in_lemo: IBUF   generic map(IBUF_LOW_PWR => FALSE)                    port map (O => LEMO_TRIGGER_i, I => LEMO_TRIGGER);
+led_locked_obuf:  OBUF  port map  (O => LOCKED_LED, I => master_locked);
+
 ----------------------------------------------------XADC----------------------------------------------------------------
 xadc_mux0_obuf:   OBUF   port map  (O => MuxAddr0, I => MuxAddr0_i);
 xadc_mux1_obuf:   OBUF   port map  (O => MuxAddr1, I => MuxAddr1_i);
@@ -2227,7 +2248,8 @@ art_out_diff_1:   OBUFDS port map (O =>  ART_OUT_P, OB => ART_OUT_N, I => art2);
 -------------------------------------------------------------------
     -- 1. synced_to_flowFSM
     -- 2. sel_cs
-    -- 3. flow_fsm
+    -- 3. sync_ctf_rst
+    -- 4. flow_fsm
 -------------------------------------------------------------------
 
 art_process: process(userclk2, art2)
@@ -2266,6 +2288,14 @@ begin
     end case;   
 end process;
 
+sync_ctf_rst_proc: process(userclk2)
+begin
+    if(rising_edge(userclk2))then
+        ctf_rst_s0 <= ctf_rst_i;
+        ctf_rst_s1 <= ctf_rst_s0;
+    end if;
+end process;
+
 flow_fsm: process(userclk2)
     begin
     if rising_edge(userclk2) then
@@ -2290,7 +2320,7 @@ flow_fsm: process(userclk2)
                     pf_rst_flow             <= '0';
                     rstFIFO_top             <= '0';
                     tren                    <= '0';
-                    vmm_ena_all             <= '0';
+                    vmm_ena_all             <= '1'; -- put this to 1?
                     vmm_tki                 <= '0';
                     ckbc_enable             <= '0';
                     vmm_cktp_primary        <= '0';
@@ -2300,6 +2330,9 @@ flow_fsm: process(userclk2)
 
                     if(vmm_conf = '1')then
                         state <= WAIT_FOR_CONF;
+                        
+                    elsif(ctf_rst_s1 = '1')then
+                        state <= VMM_SOFT_RST;
 
                     elsif(newIP_rdy = '1')then -- start new IP setup
                         if(wait_cnt = "00000111")then -- wait for safe assertion of multi-bit signal
@@ -2395,6 +2428,17 @@ flow_fsm: process(userclk2)
                         state        <= IDLE;
                     else
                         state        <= SEND_CONF_REPLY;
+                    end if;
+                    
+                when VMM_SOFT_RST =>
+                    sel_cs          <= "00"; -- drive CS to gnd
+                    vmm_ena_all     <= '0';
+                    if(wait_cnt = "11111111" and ctf_rst_s1 = '0')then -- wait for ctf trigger to fall
+                        wait_cnt    <= (others => '0');
+                        state       <= IDLE;
+                    else
+                        wait_cnt    <= wait_cnt + 1;
+                        state       <= VMM_SOFT_RST;
                     end if;
 
                 when DAQ_INIT =>
@@ -2499,7 +2543,7 @@ end process;
     vmm_bitmask             <= vmm_bitmask_8VMM when (is_mmfe8 = '1') else vmm_bitmask_1VMM;
     
     pf_newCycle             <= tr_out_i;
-    CH_TRIGGER_i            <= not CH_TRIGGER;
+    EXT_TRIGGER_i           <= LEMO_TRIGGER_i;
     TRIGGER_OUT_P           <= art2;
     TRIGGER_OUT_N           <= not art2;
     MO                      <= MO_i;
@@ -2620,7 +2664,7 @@ end process;
     triggerETRProbe(25)               <= etr_reset_latched;
     triggerETRProbe(26)               <= trigger_i;
     triggerETRProbe(38 downto 27)     <= glBCID_i;
-    triggerETRProbe(39)               <= CH_TRIGGER_i;
+    triggerETRProbe(39)               <= EXT_TRIGGER_i;
     triggerETRProbe(40)               <= reset_FF;
     triggerETRProbe(63 downto 41)     <= (others => '0'); 
 
