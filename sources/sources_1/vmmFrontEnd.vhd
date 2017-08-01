@@ -271,8 +271,8 @@ architecture Behavioral of vmmFrontEnd is
     -- Global Settings
     ------------------------------------------------------------------- 
     -- Default IP and MAC address of the board
-    signal default_IP       : std_logic_vector(31 downto 0) := x"c0a80002";
-    signal default_MAC      : std_logic_vector(47 downto 0) := x"002320189223";
+    signal default_IP       : std_logic_vector(31 downto 0) := x"c0a80003";
+    signal default_MAC      : std_logic_vector(47 downto 0) := x"002320189226";
     signal default_destIP   : std_logic_vector(31 downto 0) := x"c0a80010";
     -- Set to '1' for MMFE8 or '0' for 1-VMM boards
     constant is_mmfe8       : std_logic := '0';
@@ -2232,7 +2232,7 @@ ckart_addc_buf: OBUFDS port map ( O => CKART_ADDC_P, OB => CKART_ADDC_N, I => ck
 
 ----------------------------------------------------TRIGGER/CTF----------------------------------------------------------------
 CTF_rst_in:   IBUFDS generic map(DIFF_TERM => TRUE, IBUF_LOW_PWR => FALSE) port map (O => ctf_rst_i, I => CTF_RST_P, IB => CTF_RST_N);
-trig_in_lemo: IBUF   generic map(IBUF_LOW_PWR => FALSE)                    port map (O => LEMO_TRIGGER_i, I => LEMO_TRIGGER);
+trig_in_lemo: IBUF port map (O => LEMO_TRIGGER_i, I => LEMO_TRIGGER);
 led_locked_obuf:  OBUF  port map  (O => LOCKED_LED, I => master_locked);
 
 ----------------------------------------------------XADC----------------------------------------------------------------
@@ -2543,7 +2543,7 @@ end process;
     vmm_bitmask             <= vmm_bitmask_8VMM when (is_mmfe8 = '1') else vmm_bitmask_1VMM;
     
     pf_newCycle             <= tr_out_i;
-    EXT_TRIGGER_i           <= LEMO_TRIGGER_i;
+    EXT_TRIGGER_i           <= not LEMO_TRIGGER_i;
     TRIGGER_OUT_P           <= art2;
     TRIGGER_OUT_N           <= not art2;
     MO                      <= MO_i;

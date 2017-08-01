@@ -80,7 +80,7 @@ architecture Behavioral of ckbc_gen is
     signal count_ro         : unsigned(7 downto 0) := to_unsigned(0,8);
     signal ckbc_max_cnt     : unsigned(6 downto 0) := to_unsigned(0,7);
     signal ckbc_ro          : std_logic := '0';
-    constant ckbc_max_limit : integer := 32;
+    constant ckbc_max_limit : integer := 12;
 
 
     attribute ASYNC_REG : string;
