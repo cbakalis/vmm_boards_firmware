@@ -471,6 +471,7 @@ architecture Behavioral of vmmFrontEnd is
     signal ctf_rst_i          : std_logic := '0';
     signal ctf_rst_s0         : std_logic := '0';
     signal ctf_rst_s1         : std_logic := '0';
+    signal tr_delay_limit     : std_logic_vector(15 downto 0) := x"2000";
   
     -------------------------------------------------
     -- Event Timing & Soft Reset
@@ -560,6 +561,7 @@ architecture Behavioral of vmmFrontEnd is
     signal cktk_max_num     : std_logic_vector(7 downto 0)     := x"07";
     signal ckbcMode         : std_logic := '0';
     signal CKTP_raw         : std_logic := '0';
+    signal ckbc_max_num     : std_logic_vector(7 downto 0)     := x"20";
     
     -------------------------------------------------
     -- Flow FSM signals
@@ -927,7 +929,7 @@ architecture Behavioral of vmmFrontEnd is
           trext           : in std_logic;
           reset           : in std_logic;
           level_0         : out std_logic;
-          
+          delay_limit     : in STD_LOGIC_VECTOR(15 DOWNTO 0);
           
           event_counter   : out std_logic_vector(31 DOWNTO 0);
           tr_out          : out std_logic;
@@ -1174,6 +1176,7 @@ architecture Behavioral of vmmFrontEnd is
         -------- FPGA Config Interface -----
         latency             : out std_logic_vector(15 downto 0);
         serial_number       : out std_logic_vector(31 downto 0);
+        tr_delay_limit      : out std_logic_vector(15 downto 0);
         daq_on              : out std_logic;
         ext_trigger         : out std_logic;
         ckbcMode            : out std_logic;
@@ -1196,6 +1199,7 @@ architecture Behavioral of vmmFrontEnd is
         cktp_skew           : out std_logic_vector(7 downto 0);
         cktp_period         : out std_logic_vector(15 downto 0);
         cktp_width          : out std_logic_vector(7 downto 0);
+        ckbc_max_num        : out std_logic_vector(7 downto 0);
         ------------------------------------
         ------ VMM Config Interface --------
         vmm_bitmask         : out std_logic_vector(7 downto 0);
@@ -1660,6 +1664,7 @@ udp_din_conf_block: udp_data_in_handler
         ------------------------------------
         -------- FPGA Config Interface -----
         latency             => latency_conf,
+        tr_delay_limit      => tr_delay_limit,
         serial_number       => serial_number,
         daq_on              => daq_on,
         ext_trigger         => trig_mode_int,
@@ -1683,6 +1688,7 @@ udp_din_conf_block: udp_data_in_handler
         cktp_skew           => cktp_skew,
         cktp_period         => cktp_period,
         cktp_width          => cktp_pulse_width,
+        ckbc_max_num        => ckbc_max_num,
         ------------------------------------
         ------ VMM Config Interface --------
         vmm_bitmask         => vmm_bitmask_8VMM,
@@ -1814,9 +1820,10 @@ trigger_instance: trigger
         CKTP_raw        => CKTP_raw,
         pfBusy          => pfBusy_i,
         cktp_pulse_width=> cktp_pulse_width(4 downto 0),
+        delay_limit     => tr_delay_limit,
         
         tren            => tren,                -- Trigger module enabled
-        tr_hold         => tr_hold,             -- Prevents trigger while high
+        tr_hold         => '0',                 -- Prevents trigger while high (GROUNDED)
         trmode          => trig_mode_int,       -- Mode 0: internal / Mode 1: external
         trext           => EXT_TRIGGER_i,       -- External trigger is to be driven to this port
         level_0         => level_0,              -- Level-0 accept signal
@@ -2424,18 +2431,19 @@ flow_fsm: process(userclk2)
                     reply_enable    <= '1';
                     sel_cs          <= "00"; -- drive CS to gnd
                     vmm_ena_all     <= '0'; 
-                    if(reply_done = '1' and UDPDone = '1')then
+                    if(reply_done = '1')then
                         state        <= IDLE;
                     else
                         state        <= SEND_CONF_REPLY;
                     end if;
                     
                 when VMM_SOFT_RST =>
-                    sel_cs          <= "00"; -- drive CS to gnd
-                    vmm_ena_all     <= '0';
+                    sel_cs              <= "00"; -- drive CS to gnd
+                    vmm_ena_all         <= '0';
+                    start_conf_proc_int <= '1';  -- select conf reply as it will come next...
                     if(wait_cnt = "11111111" and ctf_rst_s1 = '0')then -- wait for ctf trigger to fall
                         wait_cnt    <= (others => '0');
-                        state       <= IDLE;
+                        state       <= SEND_CONF_REPLY;
                     else
                         wait_cnt    <= wait_cnt + 1;
                         state       <= VMM_SOFT_RST;

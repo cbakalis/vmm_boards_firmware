@@ -68,6 +68,7 @@ entity udp_data_in_handler is
     -------- FPGA Config Interface -----
     latency             : out std_logic_vector(15 downto 0);
     serial_number       : out std_logic_vector(31 downto 0);
+    tr_delay_limit      : out std_logic_vector(15 downto 0);
     daq_on              : out std_logic;
     ext_trigger         : out std_logic;
     ckbcMode            : out std_logic;
@@ -90,6 +91,7 @@ entity udp_data_in_handler is
     cktp_skew           : out std_logic_vector(7 downto 0);
     cktp_period         : out std_logic_vector(15 downto 0);
     cktp_width          : out std_logic_vector(7 downto 0);
+    ckbc_max_num        : out std_logic_vector(7 downto 0);
     ------------------------------------
     ------ VMM Config Interface --------
     vmm_bitmask         : out std_logic_vector(7 downto 0);
@@ -151,6 +153,8 @@ architecture RTL of udp_data_in_handler is
         fpga_rst            : out std_logic;
         fpgaPacket_rdy      : out std_logic;
         latency             : out std_logic_vector(15 downto 0);
+        tr_delay_limit      : out std_logic_vector(15 downto 0);
+        ckbc_max_num        : out std_logic_vector(7 downto 0);
         daq_on              : out std_logic;
         ext_trigger         : out std_logic;
         ckbcMode            : out std_logic
@@ -514,6 +518,8 @@ fpga_config_logic: fpga_config_block
         fpga_rst            => fpga_rst_i,
         fpgaPacket_rdy      => fpgaPacket_rdy,
         latency             => latency,
+        tr_delay_limit      => tr_delay_limit,
+        ckbc_max_num        => ckbc_max_num,
         daq_on              => daq_on,
         ext_trigger         => ext_trigger,
         ckbcMode            => ckbcMode

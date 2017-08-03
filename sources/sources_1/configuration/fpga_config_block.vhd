@@ -88,6 +88,8 @@ entity fpga_config_block is
     fpga_rst            : out std_logic;
     fpgaPacket_rdy      : out std_logic;
     latency             : out std_logic_vector(15 downto 0);
+    tr_delay_limit      : out std_logic_vector(15 downto 0);
+    ckbc_max_num        : out std_logic_vector(7 downto 0);
     daq_on              : out std_logic;
     ext_trigger         : out std_logic;
     ckbcMode            : out std_logic
@@ -303,6 +305,8 @@ begin
         when x"c4"  => cktp_skew                <= reg_value(7 downto 0);
         when x"c5"  => cktp_period              <= reg_value(15 downto 0);
         when x"c6"  => cktp_width               <= reg_value(7 downto 0);
+        when x"c7"  => ckbc_max_num             <= reg_value(7 downto 0);
+        when x"c8"  => tr_delay_limit           <= reg_value(15 downto 0);
         ----- xADC conf ------
         when x"a1"  => vmm_id_xadc              <= reg_value(15 downto 0);
         when x"a2"  => xadc_sample_size         <= reg_value(10 downto 0);

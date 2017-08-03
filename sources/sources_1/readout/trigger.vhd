@@ -65,6 +65,7 @@ entity trigger is
             trext           : in STD_LOGIC;
             level_0         : out STD_LOGIC;
             accept_wr       : out STD_LOGIC;
+            delay_limit     : in STD_LOGIC_VECTOR(15 DOWNTO 0);
 
             reset           : in STD_LOGIC;
 
@@ -125,13 +126,13 @@ architecture Behavioral of trigger is
     type stateType is (waitingForTrigger, waitingForLatency, waitingForLatency_1, waitingForLatency_2, issueRequest, checkTrigger);
     signal state            : stateType := waitingForTrigger;
     signal state_l0         : stateType := waitingForTrigger;
+
     
 ---------------------------------------------------------------------------------------------- Uncomment for hold window Start
---    signal hold_state       : std_logic_vector(3 downto 0);
---    signal hold_cnt         : std_logic_vector(31 downto 0);
---    signal start            : std_logic;
---    signal hold             : std_logic;
---    signal state            : std_logic_vector(2 downto 0)      := ( others => '0' );
+    signal hold_cnt         : unsigned(15 downto 0) := (others => '0');
+    signal start            : std_logic;
+    signal hold_delay       : std_logic := '0';
+    signal state_hold       : std_logic_vector(1 downto 0) := (others => '0');
 ---------------------------------------------------------------------------------------------- Uncomment for hold window End
     
     -- Debugging
@@ -219,68 +220,71 @@ begin
 
 -- Processes
 ---------------------------------------------------------------------------------------------- Uncomment for hold window Start
---holdDelay: process (clk, reset, start, tr_out_i, trext, trint) -- state machine to manage delay
---begin
---    if (reset = '1') then
---        hold <= '0';
---        state <= ( others => '0' );
---    elsif rising_edge(clk) then
---        case state is 
---            when "000" => -- Idle
---                if (start = '1') then -- wait for start signal
---                    state <= "001";
---                else
---                    state <= "000";
---                end if;
+holdDelay: process (clk) -- state machine to manage delay
+begin
+    if rising_edge(clk) then
+        if (reset = '1') then
+            hold_delay  <= '0';
+            state_hold  <= (others => '0');
+            hold_cnt    <= (others => '0');
+        else
+            case state_hold is 
+                when "00" => -- Idle
+                    if (start = '1') then -- wait for start signal
+                        state_hold <= "01";
+                    else
+                        state_hold <= "00";
+                    end if;
 
---            when "001" => -- st1
---                if (tr_out_i = '0') then -- trigger returned to zero, start the count
---                    hold <= '1';
---                    hold_cnt <= ( others => '0' ); -- reset the counter
---                    state <= "010";
---                else
---                    state <= "001";
---                end if;
+                when "01" => -- st1
+                    if (tr_out_i_ff_synced = '0') then -- trigger returned to zero, start the count
+                        hold_delay  <= '1';
+                        hold_cnt    <= (others => '0'); -- reset the counter
+                        state_hold  <= "10";
+                    else
+                        state_hold  <= "01";
+                    end if;
 
---            when "010" => -- st2
---                if (hold_cnt = delay) then -- reached end of deadtime
---                    if ((trext = '0' and mode = '1') or (trint = '0' and mode = '0')) then -- No current trigger
---                        hold <= '0';
---                        state <= "000";
---                    else
---                        state <= "011";
---                    end if;
+                when "10" => -- st2
+                    if (hold_cnt = unsigned(delay_limit)) then -- reached end of deadtime
+                        if ((trext_ff_resynced = '0' and mode = '1') or (trint_ff_synced125 = '0' and mode = '0')) then -- No current trigger
+                            hold_delay  <= '0';
+                            state_hold  <= "00";
+                        else
+                            state_hold  <= "11";
+                        end if;
 
---                    hold_cnt <= ( others => '0');
-                    
---                else
---                    hold_cnt <= hold_cnt + '1';
---                end if;
+                        hold_cnt <= (others => '0');
+                    else
+                        hold_cnt <= hold_cnt + 1;
+                    end if;
 
---            when "011" => -- st3
---                if ((trext = '0' and mode = '1') or (trint = '0' and mode = '0')) then -- wait until missed trigger ends
---                    state <= "000";
---                    hold <= '0';
---                else
---                    state <= "011";
---                end if;
+                when "11" => -- st3
+                    if ((trext_ff_resynced = '0' and mode = '1') or (trint_ff_synced125 = '0' and mode = '0')) then -- wait until missed trigger ends
+                        state_hold  <= "00";
+                        hold_delay  <= '0';
+                    else
+                        state_hold  <= "11";
+                    end if;
 
---            when others =>
---                state <= "000";
---        end case ;
-            
---    end if;
---end process;
+                when others =>
+                    state_hold  <= "00";
+                    hold_delay  <= '0';
+                    hold_cnt    <= (others => '0');
+            end case ;
+        end if;    
+    end if;
+end process;
 
 
---triggerLatch: process (tr_out_i, hold)
---begin
---    if (tr_out_i = '1' and hold = '0') then -- start of trigger
---        start <= '1';
---    else -- Release the start command
---        start <= '0';
---    end if;
---end process;
+triggerLatch: process (tr_out_i_ff_synced, hold_delay)
+begin
+    if (tr_out_i_ff_synced = '1' and hold_delay = '0') then -- start of trigger
+        start <= '1';
+    else -- Release the start command
+        start <= '0';
+    end if;
+end process;
 ---------------------------------------------------------------------------------------------- Uncomment for hold window End
 generate_2ckbc: if (vmmReadoutMode = '0') generate
 
@@ -422,8 +426,8 @@ end generate generate_level0;
 
 trenAnd: process(clk)
 begin
-    if rising_edge(clk) then
-        if (tren = '1' and tr_hold = '0') then -- No hold command, trigger enabled
+    if rising_edge(clk) then -- WAS tr_hold
+        if (tren = '1' and hold_delay = '0') then -- No hold command, trigger enabled
             tren_buff <= '1';
         else
             tren_buff <= '0';
