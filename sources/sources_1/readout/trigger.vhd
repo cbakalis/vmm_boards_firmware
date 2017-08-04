@@ -45,7 +45,8 @@ use IEEE.NUMERIC_STD.ALL;
 use UNISIM.VComponents.all;
 
 entity trigger is
-    Generic ( vmmReadoutMode : STD_LOGIC);
+    Generic ( vmmReadoutMode : STD_LOGIC;
+              useDelay       : STD_LOGIC);
     Port (
             clk             : in STD_LOGIC;
             ckbc            : in STD_LOGIC;
@@ -426,9 +427,11 @@ end generate generate_level0;
 
 trenAnd: process(clk)
 begin
-    if rising_edge(clk) then -- WAS tr_hold
-        if (tren = '1' and hold_delay = '0') then -- No hold command, trigger enabled
+    if rising_edge(clk) then
+        if (tren = '1' and hold_delay = '0' and useDelay = '1') then -- No internal hold command, trigger enabled
             tren_buff <= '1';
+        elsif (tren = '1' and tr_hold = '0' and useDelay = '0') then -- No external hold command, trigger enabled
+            tren_buff <= '1'; 
         else
             tren_buff <= '0';
         end if;

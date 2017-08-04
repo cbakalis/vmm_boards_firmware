@@ -175,7 +175,7 @@ entity vmmFrontEnd is
 
         CKART_1_P, CKART_1_N  : OUT std_logic;
         CKART_2_P, CKART_2_N  : OUT std_logic;
-        CKART_3_P, CKART_3_N  : OUT std_logic;
+        --CKART_3_P, CKART_3_N  : OUT std_logic; -- i am lazy
         CKART_4_P, CKART_4_N  : OUT std_logic;
         CKART_5_P, CKART_5_N  : OUT std_logic;
         CKART_6_P, CKART_6_N  : OUT std_logic;
@@ -186,7 +186,7 @@ entity vmmFrontEnd is
         SETB_P,    SETB_N     : OUT std_logic;
         CK6B_1_P,  CK6B_1_N   : OUT std_logic;
         CK6B_2_P,  CK6B_2_N   : OUT std_logic;
-        CK6B_3_P,  CK6B_3_N   : OUT std_logic;
+        --CK6B_3_P,  CK6B_3_N   : OUT std_logic; -- i am lazy
         CK6B_4_P,  CK6B_4_N   : OUT std_logic;
         CK6B_5_P,  CK6B_5_N   : OUT std_logic;
         CK6B_6_P,  CK6B_6_N   : OUT std_logic;
@@ -213,6 +213,13 @@ entity vmmFrontEnd is
         CTF_CLK_N              : IN  std_logic;
         CTF_RST_P              : IN  std_logic;
         CTF_RST_N              : IN  std_logic;
+
+        -- BUSY SIGNALS
+        -------------------------------------
+        BUSY_IN_P              : IN  std_logic;
+        BUSY_IN_N              : IN  std_logic;
+        BUSY_OUT_P             : OUT std_logic;
+        BUSY_OUT_N             : OUT std_logic;
 
         -- xADC Interface
         --------------------------------------
@@ -456,6 +463,10 @@ architecture Behavioral of vmmFrontEnd is
     -------------------------------------------------
     signal tren               : std_logic := '0';
     signal tr_hold            : std_logic := '0';
+    signal tr_hold_all        : std_logic := '0';
+    signal tr_hold_ext        : std_logic := '0';
+    signal tr_hold_ext_i      : std_logic := '0';
+    signal tr_hold_ext_s      : std_logic := '0';
     signal trmode             : std_logic := '0';
     signal ext_trigger_in     : std_logic := '0';
     signal tr_reset           : std_logic := '0';
@@ -590,6 +601,8 @@ architecture Behavioral of vmmFrontEnd is
     attribute ASYNC_REG of pma_reset_pipe       : signal is "TRUE";
     attribute ASYNC_REG of ctf_rst_s0           : signal is "TRUE";
     attribute ASYNC_REG of ctf_rst_s1           : signal is "TRUE";
+    attribute ASYNC_REG of tr_hold_ext_i        : signal is "TRUE";
+    attribute ASYNC_REG of tr_hold_ext_s        : signal is "TRUE";
   
     -------------------------------------------------------------------
     -- Keep signals for ILA
@@ -908,7 +921,8 @@ architecture Behavioral of vmmFrontEnd is
     end component;
     -- 5
     component trigger is
-      generic (vmmReadoutMode : std_logic);
+      Generic ( vmmReadoutMode : STD_LOGIC;
+                useDelay       : STD_LOGIC);
       port (
           clk             : in std_logic;
           ckbc            : in std_logic;
@@ -1807,7 +1821,8 @@ readout_vmm: vmm_readout_wrapper
     );
 
 trigger_instance: trigger
-    generic map(vmmReadoutMode => vmmReadoutMode)
+    generic map(vmmReadoutMode => vmmReadoutMode,
+                useDelay       => '0') -- use delay or external busy
     port map(
         clk             => userclk2,
         ckbc            => CKBC_glbl,
@@ -1823,7 +1838,7 @@ trigger_instance: trigger
         delay_limit     => tr_delay_limit,
         
         tren            => tren,                -- Trigger module enabled
-        tr_hold         => '0',                 -- Prevents trigger while high (GROUNDED)
+        tr_hold         => tr_hold_all,         -- Prevents trigger while high (external and internal)
         trmode          => trig_mode_int,       -- Mode 0: internal / Mode 1: external
         trext           => EXT_TRIGGER_i,       -- External trigger is to be driven to this port
         level_0         => level_0,              -- Level-0 accept signal
@@ -2124,7 +2139,7 @@ sett_obuf:   OBUFDS port map (O => SETT_P,   OB => SETT_N,   I => '0');
 setb_obuf:   OBUFDS port map (O => SETB_P,   OB => SETB_N,   I => '0');
 ck6b_obuf_1: OBUFDS port map (O => CK6B_1_P, OB => CK6B_1_N, I => '0');
 ck6b_obuf_2: OBUFDS port map (O => CK6B_2_P, OB => CK6B_2_N, I => '0');
-ck6b_obuf_3: OBUFDS port map (O => CK6B_3_P, OB => CK6B_3_N, I => '0');
+--ck6b_obuf_3: OBUFDS port map (O => CK6B_3_P, OB => CK6B_3_N, I => '0');
 ck6b_obuf_4: OBUFDS port map (O => CK6B_4_P, OB => CK6B_4_N, I => '0');
 ck6b_obuf_5: OBUFDS port map (O => CK6B_5_P, OB => CK6B_5_N, I => '0');
 ck6b_obuf_6: OBUFDS port map (O => CK6B_6_P, OB => CK6B_6_N, I => '0');
@@ -2218,7 +2233,7 @@ TKO_diff_1: IBUFDS port map ( O =>  tko_i, I => TKO_P, IB => TKO_N);
 ---------------------------------------------------CKART----------------------------------------------------------------
 ckart_diff_1: OBUFDS port map ( O => CKART_1_P, OB => CKART_1_N, I => ckart_vec(1));
 ckart_diff_2: OBUFDS port map ( O => CKART_2_P, OB => CKART_2_N, I => ckart_vec(2));
-ckart_diff_3: OBUFDS port map ( O => CKART_3_P, OB => CKART_3_N, I => ckart_vec(3));
+--ckart_diff_3: OBUFDS port map ( O => CKART_3_P, OB => CKART_3_N, I => ckart_vec(3));
 ckart_diff_4: OBUFDS port map ( O => CKART_4_P, OB => CKART_4_N, I => ckart_vec(4));
 ckart_diff_5: OBUFDS port map ( O => CKART_5_P, OB => CKART_5_N, I => ckart_vec(5));
 ckart_diff_6: OBUFDS port map ( O => CKART_6_P, OB => CKART_6_N, I => ckart_vec(6));
@@ -2241,6 +2256,10 @@ ckart_addc_buf: OBUFDS port map ( O => CKART_ADDC_P, OB => CKART_ADDC_N, I => ck
 CTF_rst_in:   IBUFDS generic map(DIFF_TERM => TRUE, IBUF_LOW_PWR => FALSE) port map (O => ctf_rst_i, I => CTF_RST_P, IB => CTF_RST_N);
 trig_in_lemo: IBUF port map (O => LEMO_TRIGGER_i, I => LEMO_TRIGGER);
 led_locked_obuf:  OBUF  port map  (O => LOCKED_LED, I => master_locked);
+
+----------------------------------------------------BUSY_IN/OUT----------------------------------------------------------------
+busy_buff_in:  IBUFDS generic map(DIFF_TERM => TRUE, IBUF_LOW_PWR => FALSE) port map (O => tr_hold_ext, I => BUSY_IN_P, IB => BUSY_IN_N);
+busy_buff_out: OBUFDS                                                       port map (O => BUSY_OUT_P, OB => BUSY_OUT_N, I => tr_hold);
 
 ----------------------------------------------------XADC----------------------------------------------------------------
 xadc_mux0_obuf:   OBUF   port map  (O => MuxAddr0, I => MuxAddr0_i);
@@ -2298,8 +2317,10 @@ end process;
 sync_ctf_rst_proc: process(userclk2)
 begin
     if(rising_edge(userclk2))then
-        ctf_rst_s0 <= ctf_rst_i;
-        ctf_rst_s1 <= ctf_rst_s0;
+        ctf_rst_s0      <= ctf_rst_i;
+        ctf_rst_s1      <= ctf_rst_s0;
+        tr_hold_ext_i   <= tr_hold_ext;
+        tr_hold_ext_s   <= tr_hold_ext_i;
     end if;
 end process;
 
@@ -2557,6 +2578,7 @@ end process;
     MO                      <= MO_i;
     rst_l0_buff             <= rst_l0_buff_flow or rst_l0_pf or glbl_rst_i;
     pf_rst_final            <= pf_rst_flow or glbl_rst_i;
+    tr_hold_all             <= tr_hold_ext_s or tr_hold; -- external OR internal
     
     -- configuration assertion
     vmm_cs_vec_obuf(1)  <= vmm_cs_all;

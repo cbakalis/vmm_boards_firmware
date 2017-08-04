@@ -76,6 +76,29 @@ set_property IOSTANDARD LVCMOS33      [get_ports TRIGGER_OUT_N]
 set_property PACKAGE_PIN P20          [get_ports LOCKED_LED]
 set_property IOSTANDARD LVCMOS33      [get_ports LOCKED_LED]
 
+#BUSY IN/OUT
+######################### IP 02 ###############################
+set_property PACKAGE_PIN Y16          [get_ports BUSY_IN_P]
+set_property PACKAGE_PIN AA16         [get_ports BUSY_IN_N]
+set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_P]
+set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_N]
+
+set_property PACKAGE_PIN AB16         [get_ports BUSY_OUT_P]
+set_property PACKAGE_PIN AB17         [get_ports BUSY_OUT_N]
+set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_P]
+set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_N]
+
+######################### IP 03 ###############################
+#set_property PACKAGE_PIN AB16         [get_ports BUSY_IN_P]
+#set_property PACKAGE_PIN AB17         [get_ports BUSY_IN_N]
+#set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_P]
+#set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_N]
+
+#set_property PACKAGE_PIN Y16          [get_ports BUSY_OUT_P]
+#set_property PACKAGE_PIN AA16         [get_ports BUSY_OUT_N]
+#set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_P]
+#set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_N]
+
 ############################ MO MMFE1 #########################
 set_property PACKAGE_PIN H13         [get_ports MO]
 set_property IOSTANDARD LVCMOS12     [get_ports MO]
@@ -651,11 +674,11 @@ set_property PACKAGE_PIN D22         [get_ports CK6B_2_N]
 set_property IOSTANDARD DIFF_HSUL_12 [get_ports CK6B_2_N]
 set_property PULLDOWN TRUE           [get_ports CK6B_2_P]
 
-set_property IOSTANDARD LVDS_25      [get_ports CK6B_3_P]
-set_property PACKAGE_PIN AB16        [get_ports CK6B_3_P]
-set_property PACKAGE_PIN AB17        [get_ports CK6B_3_N]
-set_property IOSTANDARD LVDS_25      [get_ports CK6B_3_N]
-set_property PULLDOWN TRUE           [get_ports CK6B_3_P]
+#set_property IOSTANDARD LVDS_25      [get_ports CK6B_3_P]
+#set_property PACKAGE_PIN AB16        [get_ports CK6B_3_P]
+#set_property PACKAGE_PIN AB17        [get_ports CK6B_3_N]
+#set_property IOSTANDARD LVDS_25      [get_ports CK6B_3_N]
+#set_property PULLDOWN TRUE           [get_ports CK6B_3_P]
 
 set_property IOSTANDARD LVDS_25      [get_ports CK6B_4_P]
 set_property PACKAGE_PIN P6          [get_ports CK6B_4_P]
@@ -700,11 +723,11 @@ set_property PACKAGE_PIN D21         [get_ports CKART_2_N]
 set_property IOSTANDARD DIFF_HSUL_12 [get_ports CKART_2_N]
 set_property PULLDOWN TRUE           [get_ports CKART_2_P]
 
-set_property IOSTANDARD LVDS_25      [get_ports CKART_3_P]
-set_property PACKAGE_PIN Y16         [get_ports CKART_3_P]
-set_property PACKAGE_PIN AA16        [get_ports CKART_3_N]
-set_property IOSTANDARD LVDS_25      [get_ports CKART_3_N]
-set_property PULLDOWN TRUE           [get_ports CKART_3_P]
+#set_property IOSTANDARD LVDS_25      [get_ports CKART_3_P]
+#set_property PACKAGE_PIN Y16         [get_ports CKART_3_P]
+#set_property PACKAGE_PIN AA16        [get_ports CKART_3_N]
+#set_property IOSTANDARD LVDS_25      [get_ports CKART_3_N]
+#set_property PULLDOWN TRUE           [get_ports CKART_3_P]
 
 set_property IOSTANDARD LVDS_25      [get_ports CKART_4_P]
 set_property PACKAGE_PIN M6          [get_ports CKART_4_P]
