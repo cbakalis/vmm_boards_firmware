@@ -68,6 +68,7 @@ entity clk_gen_wrapper is
         cktp_period         : in  std_logic_vector(15 downto 0);
         cktp_skew           : in  std_logic_vector(4 downto 0);        
         ckbc_freq           : in  std_logic_vector(5 downto 0);
+        ckbc_max_num        : in  std_logic_vector(7 downto 0);
         ------------------------------------
         ---------- VMM Interface -----------
         CKTP                : out std_logic;
@@ -111,7 +112,8 @@ architecture RTL of clk_gen_wrapper is
         enable_ro_ckbc  : in  std_logic;
         ready           : in  std_logic;
         ckbc_ro_out     : out std_logic;
-        ckbc_out        : out std_logic
+        ckbc_out        : out std_logic;
+        ckbc_max_num    : in  std_logic_vector(7 downto 0)
     );
     end component;
     
@@ -154,7 +156,8 @@ ckbc_generator: ckbc_gen
         freq            => ckbc_freq,
         ready           => ckbc_start,
         ckbc_ro_out     => CKBC_ro_preBuf,
-        ckbc_out        => CKBC_preBuf
+        ckbc_out        => CKBC_preBuf,
+        ckbc_max_num    => ckbc_max_num
     );
       
 CKBC_BUFGMUX: BUFGMUX

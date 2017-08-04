@@ -52,7 +52,8 @@ entity ckbc_gen is
         enable_ro_ckbc  : in  std_logic;
         ready           : in  std_logic;
         ckbc_ro_out     : out std_logic;
-        ckbc_out        : out std_logic
+        ckbc_out        : out std_logic;
+        ckbc_max_num    : in std_logic_vector(7 downto 0)
     );
 end ckbc_gen;
 
@@ -80,8 +81,6 @@ architecture Behavioral of ckbc_gen is
     signal count_ro         : unsigned(7 downto 0) := to_unsigned(0,8);
     signal ckbc_max_cnt     : unsigned(6 downto 0) := to_unsigned(0,7);
     signal ckbc_ro          : std_logic := '0';
-    constant ckbc_max_limit : integer := 12;
-
 
     attribute ASYNC_REG : string;
     attribute ASYNC_REG of ready_i         : signal is "TRUE";
@@ -200,7 +199,7 @@ begin
                 end if;
 
             when ST_INCR =>
-                if(ckbc_max_cnt = ckbc_max_limit)then
+                if (ckbc_max_cnt = unsigned(ckbc_max_num)) then
                     ckbc_inhibit    <= '1';
                     state_cnt       <= ST_WAIT_ENABLE;    
                 else

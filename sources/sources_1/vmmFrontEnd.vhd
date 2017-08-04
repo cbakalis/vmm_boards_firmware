@@ -278,8 +278,8 @@ architecture Behavioral of vmmFrontEnd is
     -- Global Settings
     ------------------------------------------------------------------- 
     -- Default IP and MAC address of the board
-    signal default_IP       : std_logic_vector(31 downto 0) := x"c0a80003";
-    signal default_MAC      : std_logic_vector(47 downto 0) := x"002320189226";
+    signal default_IP       : std_logic_vector(31 downto 0) := x"c0a80002";
+    signal default_MAC      : std_logic_vector(47 downto 0) := x"002320189229";
     signal default_destIP   : std_logic_vector(31 downto 0) := x"c0a80010";
     -- Set to '1' for MMFE8 or '0' for 1-VMM boards
     constant is_mmfe8       : std_logic := '0';
@@ -1395,6 +1395,7 @@ architecture Behavioral of vmmFrontEnd is
         cktp_period         : in  std_logic_vector(15 downto 0);
         cktp_skew           : in  std_logic_vector(4 downto 0);        
         ckbc_freq           : in  std_logic_vector(5 downto 0);
+        ckbc_max_num        : in  std_logic_vector(7 downto 0);
         ------------------------------------
         ---------- VMM Interface -----------
         CKTP                : out std_logic;
@@ -2043,6 +2044,7 @@ ckbc_cktp_generator: clk_gen_wrapper
         cktp_period         => cktp_period,
         cktp_skew           => cktp_skew(4 downto 0),
         ckbc_freq           => ckbc_freq(5 downto 0),
+        ckbc_max_num        => ckbc_max_num,
         ------------------------------------
         ---------- VMM Interface -----------
         CKTP                => CKTP_glbl,
