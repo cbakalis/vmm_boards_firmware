@@ -51,6 +51,7 @@ entity UDP_ICMP_Complete_nomac is
 			rx_clk					: in  std_logic;
 			tx_clk					: in  std_logic;
 			reset 					: in  std_logic;
+			fifo_init               : in  std_logic;
 			our_ip_address 		    : in  std_logic_vector (31 downto 0);
 			our_mac_address 		: in  std_logic_vector (47 downto 0);
 			control					: in  udp_control_type;
@@ -190,6 +191,7 @@ architecture structural of UDP_ICMP_Complete_nomac is
             tx_clk                  : in std_logic;
             rx_clk                  : in std_logic;
             reset                   : in std_logic;
+            fifo_init               : in std_logic;
             -- ICMP/UDP mux interface
             sel_icmp                : out std_logic;
             -- ICMP TX interface
@@ -362,6 +364,7 @@ begin
             tx_clk                  => tx_clk,
             rx_clk                  => rx_clk,
             reset                   => reset,
+            fifo_init               => fifo_init,
             -- ICMP/UDP mux interface
             sel_icmp                => sel_icmp,
             -- ICMP TX interface

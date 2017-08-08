@@ -303,6 +303,7 @@ architecture Behavioral of vmmFrontEnd is
     signal gmii_rxd_int          : std_logic_vector(7 downto 0); -- Internal gmii_rxd signal (between core and SGMII adaptation module).
     signal gmii_rx_dv_int        : std_logic;                    -- Internal gmii_rx_dv signal (between core and SGMII adaptation module).
     signal gmii_rx_er_int        : std_logic;                    -- Internal gmii_rx_er signal (between core and SGMII adaptation module).
+    signal phy_rstn              : std_logic := '0';
     
     -- Extra registers to ease IOB placement
     signal status_vector_int           : std_logic_vector(15 downto 0);
@@ -403,6 +404,9 @@ architecture Behavioral of vmmFrontEnd is
     signal fpga_rst_i         : std_logic := '0';
     signal reply_done         : std_logic := '0';
     signal reply_enable       : std_logic := '0';
+    signal glbl_fifo_init     : std_logic := '1'; --synced@200Mhz
+    signal glbl_fifo_init_s0  : std_logic := '1';
+    signal glbl_fifo_init_s1  : std_logic := '1'; --synced@125Mhz
 
     -------------------------------------------------
     -- VMM Signals                   
@@ -548,12 +552,14 @@ architecture Behavioral of vmmFrontEnd is
     signal cktk_max_num     : std_logic_vector(7 downto 0)     := x"07";
     signal ckbcMode         : std_logic := '0';
     signal CKTP_raw         : std_logic := '0';
+    signal ckbc_max_num     : std_logic_vector(7 downto 0)     := x"20";
     
     -------------------------------------------------
     -- Flow FSM signals
     -------------------------------------------------
     type state_t is (IDLE, WAIT_FOR_CONF, CONFIGURE, CONF_DONE, CONFIGURE_DELAY, SEND_CONF_REPLY, DAQ_INIT, FIRST_RESET, TRIG, DAQ, XADC_init, XADC_wait, FLASH_init, FLASH_wait);
     signal state        : state_t := IDLE;
+    signal rstFIFO_flow : std_logic := '0';
     signal rstFIFO_top  : std_logic := '0';
 
     -------------------------------------------------
@@ -574,6 +580,8 @@ architecture Behavioral of vmmFrontEnd is
     -------------------------------------------------------------------
     attribute ASYNC_REG                         : string;
     attribute ASYNC_REG of pma_reset_pipe       : signal is "TRUE";
+    attribute ASYNC_REG of glbl_fifo_init_s0    : signal is "TRUE";
+    attribute ASYNC_REG of glbl_fifo_init_s1    : signal is "TRUE";
   
     -------------------------------------------------------------------
     -- Keep signals for ILA
@@ -1044,6 +1052,7 @@ architecture Behavioral of vmmFrontEnd is
             rx_clk                  : in  std_logic;
             tx_clk                  : in  std_logic;
             reset                   : in  std_logic;
+            fifo_init               : in  std_logic;
             our_ip_address          : in std_logic_VECTOR (31 downto 0);
             our_mac_address         : in std_logic_vector (47 downto 0);
             control                 : in udp_control_type;
@@ -1151,6 +1160,7 @@ architecture Behavioral of vmmFrontEnd is
         clk_40              : in  std_logic;
         inhibit_conf        : in  std_logic;
         rst                 : in  std_logic;
+        rst_fifo_init       : in  std_logic;
         state_o             : out std_logic_vector(2 downto 0);
         valid_o             : out std_logic;
         ------------------------------------
@@ -1179,6 +1189,7 @@ architecture Behavioral of vmmFrontEnd is
         cktp_skew           : out std_logic_vector(7 downto 0);
         cktp_period         : out std_logic_vector(15 downto 0);
         cktp_width          : out std_logic_vector(7 downto 0);
+        ckbc_max_num        : out std_logic_vector(7 downto 0);
         ------------------------------------
         ------ VMM Config Interface --------
         vmm_bitmask         : out std_logic_vector(7 downto 0);
@@ -1360,6 +1371,7 @@ architecture Behavioral of vmmFrontEnd is
         cktp_period         : in  std_logic_vector(15 downto 0);
         cktp_skew           : in  std_logic_vector(4 downto 0);        
         ckbc_freq           : in  std_logic_vector(5 downto 0);
+        ckbc_max_num        : in  std_logic_vector(7 downto 0);
         ------------------------------------
         ---------- VMM Interface -----------
         CKTP                : out std_logic;
@@ -1609,6 +1621,7 @@ UDP_ICMP_block: UDP_ICMP_Complete_nomac
             rx_clk                      => userclk2,
             tx_clk                      => userclk2,
             reset                       => glbl_rst_i,
+            fifo_init                   => glbl_fifo_init,
             our_ip_address              => myIP,
             our_mac_address             => myMAC,
             control                     => control,
@@ -1627,7 +1640,7 @@ UDP_ICMP_block: UDP_ICMP_Complete_nomac
 i2c_module: i2c_top
        port map(  
             clk_in                => clk_200,
-            phy_rstn_out          => phy_rstn_out
+            phy_rstn_out          => phy_rstn
         );
 
 udp_din_conf_block: udp_data_in_handler
@@ -1638,6 +1651,7 @@ udp_din_conf_block: udp_data_in_handler
         clk_40              => clk_40,
         inhibit_conf        => inhibit_conf,
         rst                 => glbl_rst_i,
+        rst_fifo_init       => glbl_fifo_init_s1,
         state_o             => conf_state,
         valid_o             => open,
         ------------------------------------
@@ -1666,6 +1680,7 @@ udp_din_conf_block: udp_data_in_handler
         cktp_skew           => cktp_skew,
         cktp_period         => cktp_period,
         cktp_width          => cktp_pulse_width,
+        ckbc_max_num        => ckbc_max_num,
         ------------------------------------
         ------ VMM Config Interface --------
         vmm_bitmask         => vmm_bitmask_8VMM,
@@ -2004,6 +2019,7 @@ ckbc_cktp_generator: clk_gen_wrapper
         cktp_period         => cktp_period,
         cktp_skew           => cktp_skew(4 downto 0),
         ckbc_freq           => ckbc_freq(5 downto 0),
+        ckbc_max_num        => ckbc_max_num,
         ------------------------------------
         ---------- VMM Interface -----------
         CKTP                => CKTP_glbl,
@@ -2221,6 +2237,8 @@ xadc_mux2_obuf:   OBUF   port map  (O => MuxAddr2, I => MuxAddr2_i);
 xadc_mux3_obufds: OBUFDS port map  (O => MuxAddr3_p, OB => MuxAddr3_n, I => MuxAddr3_p_i);
 
 art_out_diff_1:   OBUFDS port map (O =>  ART_OUT_P, OB => ART_OUT_N, I => art2);
+
+rstn_obuf:  OBUF  port map  (O => phy_rstn_out, I => phy_rstn);
  
 -------------------------------------------------------------------
 --                        Processes                              --
@@ -2229,6 +2247,13 @@ art_out_diff_1:   OBUFDS port map (O =>  ART_OUT_P, OB => ART_OUT_N, I => art2);
     -- 2. sel_cs
     -- 3. flow_fsm
 -------------------------------------------------------------------
+sync_fifo_init: process(userclk2)
+begin
+    if(rising_edge(userclk2))then
+        glbl_fifo_init_s0 <= glbl_fifo_init;
+        glbl_fifo_init_s1 <= glbl_fifo_init_s0;
+    end if;
+end process;
 
 art_process: process(userclk2, art2)
 begin
@@ -2288,7 +2313,7 @@ flow_fsm: process(userclk2)
                     daq_enable_i            <= '0';
                     rst_l0_buff_flow        <= '1';
                     pf_rst_flow             <= '0';
-                    rstFIFO_top             <= '0';
+                    rstFIFO_flow            <= '0';
                     tren                    <= '0';
                     vmm_ena_all             <= '0';
                     vmm_tki                 <= '0';
@@ -2409,7 +2434,7 @@ flow_fsm: process(userclk2)
                     daq_vmm_ena_wen_enable  <= x"ff";
                     daq_cktk_out_enable     <= x"ff";
                     daq_enable_i            <= '1';
-                    rstFIFO_top             <= '1';
+                    rstFIFO_flow            <= '1';
                     pf_rst_flow             <= '1';
                     
                     if(daq_on = '0')then    -- Reset came
@@ -2434,7 +2459,7 @@ flow_fsm: process(userclk2)
                         vmm_tki <= '0';
                     end if;
                     vmm_cktp_primary    <= '0';
-                    rstFIFO_top         <= '0';
+                    rstFIFO_flow        <= '0';
                     pf_rst_flow         <= '0';
                     tren                <= '1';
                     state               <= DAQ;
@@ -2505,6 +2530,8 @@ end process;
     MO                      <= MO_i;
     rst_l0_buff             <= rst_l0_buff_flow or rst_l0_pf or glbl_rst_i;
     pf_rst_final            <= pf_rst_flow or glbl_rst_i;
+    glbl_fifo_init          <= not phy_rstn;
+    rstFIFO_top             <= rstFIFO_flow or glbl_fifo_init;
     
     -- configuration assertion
     vmm_cs_vec_obuf(1)  <= vmm_cs_all;

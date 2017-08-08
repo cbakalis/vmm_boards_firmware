@@ -52,7 +52,8 @@ entity ckbc_gen is
         enable_ro_ckbc  : in  std_logic;
         ready           : in  std_logic;
         ckbc_ro_out     : out std_logic;
-        ckbc_out        : out std_logic
+        ckbc_out        : out std_logic;
+        ckbc_max_num    : in  std_logic_vector(7 downto 0)
     );
 end ckbc_gen;
 
@@ -200,7 +201,7 @@ begin
                 end if;
 
             when ST_INCR =>
-                if(ckbc_max_cnt = ckbc_max_limit)then
+                if (ckbc_max_cnt = unsigned(ckbc_max_num)) then
                     ckbc_inhibit    <= '1';
                     state_cnt       <= ST_WAIT_ENABLE;    
                 else

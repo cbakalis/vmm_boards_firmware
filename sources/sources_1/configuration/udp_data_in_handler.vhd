@@ -62,6 +62,7 @@ entity udp_data_in_handler is
     clk_40              : in  std_logic;
     inhibit_conf        : in  std_logic;
     rst                 : in  std_logic;
+    rst_fifo_init       : in  std_logic;
     state_o             : out std_logic_vector(2 downto 0);
     valid_o             : out std_logic;
     ------------------------------------
@@ -90,6 +91,7 @@ entity udp_data_in_handler is
     cktp_skew           : out std_logic_vector(7 downto 0);
     cktp_period         : out std_logic_vector(15 downto 0);
     cktp_width          : out std_logic_vector(7 downto 0);
+    ckbc_max_num        : out std_logic_vector(7 downto 0);
     ------------------------------------
     ------ VMM Config Interface --------
     vmm_bitmask         : out std_logic_vector(7 downto 0);
@@ -118,6 +120,7 @@ architecture RTL of udp_data_in_handler is
         ------- General Interface ----------
         clk_125             : in  std_logic;
         rst                 : in  std_logic;
+        rst_fifo_init       : in  std_logic;
         cnt_bytes           : in  unsigned(7 downto 0);
         user_din_udp        : in  std_logic_vector(7 downto 0);
         ------------------------------------
@@ -145,12 +148,14 @@ architecture RTL of udp_data_in_handler is
         cktp_skew           : out std_logic_vector(7 downto 0);
         cktp_period         : out std_logic_vector(15 downto 0);
         cktp_width          : out std_logic_vector(7 downto 0);
+        ckbc_max_num        : out std_logic_vector(7 downto 0);
         ------------------------------------
         -------- FPGA Config Interface -----
         fpga_conf           : in  std_logic;
         fpga_rst            : out std_logic;
         fpgaPacket_rdy      : out std_logic;
         latency             : out std_logic_vector(15 downto 0);
+        tr_delay_limit      : out std_logic_vector(15 downto 0);
         daq_on              : out std_logic;
         ext_trigger         : out std_logic;
         ckbcMode            : out std_logic
@@ -210,6 +215,7 @@ architecture RTL of udp_data_in_handler is
     signal flash_conf       : std_logic := '0';
     signal xadc_conf        : std_logic := '0';
     signal rst_fifo         : std_logic := '0';
+    signal rst_fifo_vmmConf : std_logic := '0';
     signal rst_fifo_s40     : std_logic := '0';
     signal xadcPacket_rdy   : std_logic := '0';
     signal flashPacket_rdy  : std_logic := '0';
@@ -481,6 +487,7 @@ fpga_config_logic: fpga_config_block
         ------- General Interface ----------
         clk_125             => clk_125,
         rst                 => rst,
+        rst_fifo_init       => rst_fifo_init,
         cnt_bytes           => cnt_bytes,
         user_din_udp        => user_data_prv,
         ------------------------------------
@@ -508,12 +515,14 @@ fpga_config_logic: fpga_config_block
         cktp_skew           => cktp_skew,
         cktp_period         => cktp_period,
         cktp_width          => cktp_width,
+        ckbc_max_num        => ckbc_max_num,
         ------------------------------------
         -------- FPGA Config Interface -----
         fpga_conf           => fpga_conf,
         fpga_rst            => fpga_rst_i,
         fpgaPacket_rdy      => fpgaPacket_rdy,
         latency             => latency,
+        tr_delay_limit      => open,
         daq_on              => daq_on,
         ext_trigger         => ext_trigger,
         ckbcMode            => ckbcMode
@@ -552,6 +561,7 @@ vmm_config_logic: vmm_config_block
     state_o         <= std_logic_vector(conf_state);
     valid_o         <= user_valid_prv;
     vmmConf_came    <= vmm_conf;
+    rst_fifo_vmmConf<= rst_fifo or rst_fifo_init;
 
 glbl_rst_buf: BUFG port map (O => fpga_rst, I => fpga_rst_i);
 
@@ -566,7 +576,7 @@ CDCC_125to40: CDCC
         clk_dst         => clk_40,
   
         data_in(0)      => init_ser,
-        data_in(1)      => rst_fifo,
+        data_in(1)      => rst_fifo_vmmConf,
         data_in(2)      => top_rdy,
         data_out_s(0)   => init_ser_s40,
         data_out_s(1)   => rst_fifo_s40,
