@@ -81,13 +81,13 @@ entity packet_formation is
         dbg_st_o        : out std_logic_vector(4 downto 0);
         trraw_synced125 : in std_logic;
         vmmArtData125   : in std_logic_vector(5 downto 0);
-        vmmArtReady     : in std_logic
+        vmmArtReady     : in std_logic;
+        art2trigger     : in std_logic_vector(5 downto 0)
     );
 end packet_formation;
 
 architecture Behavioral of packet_formation is
 
-    signal artHeader        : std_logic_vector(15 downto 0) := ( others => '0' );
     signal header           : std_logic_vector(63 downto 0) := ( others => '0' );
     signal header_l0        : std_logic_vector(47 downto 0) := ( others => '0' );
     signal vmmId_i          : std_logic_vector(2 downto 0)  := b"000";
@@ -242,8 +242,7 @@ begin
                 end if;
 
             when S2 =>          -- wait for the header elements to be formed
-                debug_state <= "00010";
---                --tr_hold         <= '1';                 -- Prevent new triggers
+                debug_state     <= "00010";
                 packLen_cnt     <= x"000";              -- Reset length count
                 sel_wrenable    <= '0';
                 vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
@@ -406,13 +405,11 @@ begin
 end if;
 end process;
 
-muxFIFOData: process( sel_cnt, header, header_l0, vmmWord, vmmArtData125 )
+muxFIFOData: process( sel_cnt, header, header_l0, vmmWord, vmmArtData125, art2trigger, artValid )
 begin
     case sel_cnt is
-    when "000"  => daqFIFO_din <= b"1111000" & artValid & "01" & 
-    vmmArtData125(0) & vmmArtData125(1) & vmmArtData125(2) & vmmArtData125(3) & vmmArtData125(4) & vmmArtData125(5);
-    when "001"  => daqFIFO_din <= b"0000000" & artValid & "00" & 
-    vmmArtData125(0) & vmmArtData125(1) & vmmArtData125(2) & vmmArtData125(3) & vmmArtData125(4) & vmmArtData125(5);
+    when "000"  => daqFIFO_din <= art2trigger & b"0" & artValid & "00" & vmmArtData125(0) & vmmArtData125(1) & vmmArtData125(2) & vmmArtData125(3) & vmmArtData125(4) & vmmArtData125(5);
+    when "001"  => daqFIFO_din <= art2trigger & b"0" & artValid & "01" & vmmArtData125(0) & vmmArtData125(1) & vmmArtData125(2) & vmmArtData125(3) & vmmArtData125(4) & vmmArtData125(5);
     when "010"  => if (vmmReadoutMode = '0') then daqFIFO_din <= header(63 downto 48); else daqFIFO_din <= header_l0(47 downto 32); end if;
     when "011"  => if (vmmReadoutMode = '0') then daqFIFO_din <= header(47 downto 32); else daqFIFO_din <= header_l0(31 downto 16); end if;
     when "100"  => if (vmmReadoutMode = '0') then daqFIFO_din <= header(31 downto 16); else daqFIFO_din <= header_l0(15 downto 0); end if;
@@ -447,28 +444,28 @@ vmm_driver_inst: vmm_driver
     );
     
 triggerEdgeDetection: process(clk) --125
-    begin
-        if rising_edge(clk) then 
-            if trraw_synced125_prev = '0' and trraw_synced125 = '1' then 
-                clearValid              <= '1';
-                trraw_synced125_prev    <= trraw_synced125;
-            else
-                clearValid              <= '0';
-                trraw_synced125_prev    <= trraw_synced125;
-            end if;
+begin
+    if rising_edge(clk) then 
+        if trraw_synced125_prev = '0' and trraw_synced125 = '1' then 
+            clearValid              <= '1';
+            trraw_synced125_prev    <= trraw_synced125;
+        else
+            clearValid              <= '0';
+            trraw_synced125_prev    <= trraw_synced125;
         end if;
-    end process;
+    end if;
+end process;
     
-   LDCE_inst : LDCE
-   generic map (
-      INIT => '0')
-   port map (
-      Q => artValid,
-      CLR => clearValid,
-      D => '1',
-      G => vmmArtReady,
-      GE => artEnabled
-   );			
+LDCE_inst : LDCE
+generic map (
+  INIT => '0')
+port map (
+  Q => artValid,
+  CLR => clearValid,
+  D => '1',
+  G => vmmArtReady,
+  GE => artEnabled
+);			
 					
     globBcid_i      <= globBcid;
     vmmWord_i       <= vmmWord;
@@ -480,8 +477,6 @@ triggerEdgeDetection: process(clk) --125
     trigLatency     <= 50 + to_integer(unsigned(latency)); --(hard set to 300ns )--to_integer(unsigned(latency));
     pfBusy          <= pfBusy_i;
     globBCID_etr    <= glBCID;
-    
-    artHeader       <= b"0000000000" & vmmArtData125;
     
     -- header of level 0 has three 16-bit words from FPGA + one 16-bit word from VMM
     header_l0(47 downto 16) <= std_logic_vector(eventCounter_i);

@@ -287,6 +287,8 @@ architecture Behavioral of vmmFrontEnd is
     constant vmmReadoutMode : std_logic := '0';
     -- Set to '1' to enable the ART header
     constant artEnabled     : std_logic := '1';
+    -- Set to '1' when the art is coming faster than the external trigger
+    constant slowTrigger    : std_logic := '1';
 
     -------------------------------------------------------------------
     -- Transceiver, TEMAC, UDP_ICMP block
@@ -480,6 +482,7 @@ architecture Behavioral of vmmFrontEnd is
     signal EXT_TRIGGER_i      : std_logic := '0';
     signal request2ckbc       : std_logic := '0';
     signal trraw_synced125_i  : std_logic := '0';
+    signal trraw_synced160_i  : std_logic := '0';
     signal accept_wr          : std_logic := '0';
     signal vmmArtData         : std_logic_vector(5 downto 0) := (others => '0');
     signal vmmArtReady        : std_logic := '0';
@@ -487,6 +490,7 @@ architecture Behavioral of vmmFrontEnd is
     signal ctf_rst_s0         : std_logic := '0';
     signal ctf_rst_s1         : std_logic := '0';
     signal tr_delay_limit     : std_logic_vector(15 downto 0) := x"2000";
+    signal art2trigger        : std_logic_vector(5 downto 0) := (others => '0');
   
     -------------------------------------------------
     -- Event Timing & Soft Reset
@@ -950,12 +954,13 @@ architecture Behavioral of vmmFrontEnd is
           trext           : in std_logic;
           reset           : in std_logic;
           level_0         : out std_logic;
-          delay_limit     : in STD_LOGIC_VECTOR(15 DOWNTO 0);
+          delay_limit     : in std_logic_vector(15 downto 0);
           
-          event_counter   : out std_logic_vector(31 DOWNTO 0);
+          event_counter   : out std_logic_vector(31 downto 0);
           tr_out          : out std_logic;
           trraw_synced125 : out std_logic;
-          latency         : in std_logic_vector(15 DOWNTO 0)
+          trraw_synced160 : out std_logic;
+          latency         : in std_logic_vector(15 downto 0)
       );
     end component;
     -- 6
@@ -997,7 +1002,8 @@ architecture Behavioral of vmmFrontEnd is
             
             trraw_synced125 : in std_logic;
             vmmArtData125   : in std_logic_vector(5 downto 0);
-            vmmArtReady     : in std_logic
+            vmmArtReady     : in std_logic;
+            art2trigger     : in std_logic_vector(5 downto 0)
     );
     end component;
     -- 7
@@ -1421,12 +1427,16 @@ architecture Behavioral of vmmFrontEnd is
     -- 22
     component artReadout --art_instance
     generic( is_mmfe8   : std_logic;
-            artEnabled  : std_logic);
+            artEnabled  : std_logic;
+            slowTrigger : std_logic);
     Port(
         clk             : in std_logic;
         clk_art         : in std_logic;
-        trigger         : in std_logic;
+        trigger125      : in std_logic;
+        trigger160      : in std_logic;
+        tr_hold         : in std_logic;
         artData         : in std_logic_vector(8 downto 1);
+        art2trigger     : out std_logic_vector(5 downto 0);
         vmmArtData125   : out std_logic_vector(5 downto 0);
         vmmArtReady     : out std_logic
     );
@@ -1861,6 +1871,7 @@ trigger_instance: trigger
         event_counter   => open,
         tr_out          => tr_out_i,
         trraw_synced125 => trraw_synced125_i,
+        trraw_synced160 => trraw_synced160_i,
         latency         => latency_conf
     );
 
@@ -1928,7 +1939,8 @@ packet_formation_instance: packet_formation
         trraw_synced125 => trraw_synced125_i,
         
         vmmArtData125   => vmmArtData,
-        vmmArtReady     => vmmArtReady
+        vmmArtReady     => vmmArtReady,
+        art2trigger     => art2trigger
         
     );   
         
@@ -2087,13 +2099,17 @@ QSPI_SS_0: IOBUF
    );
    
 art_instance: artReadout
-    generic map(is_mmfe8 => is_mmfe8, 
-                artEnabled => artEnabled)
+    generic map(is_mmfe8    => is_mmfe8, 
+                artEnabled  => artEnabled,
+                slowTrigger => slowTrigger)
     port map (
         clk             => userclk2,
         clk_art         => clk_160,
-        trigger         => trraw_synced125_i,
+        trigger125      => trraw_synced125_i,
+        trigger160      => trraw_synced160_i,
+        tr_hold         => tr_hold_all,
         artData         => art_in_vec,
+        art2trigger     => art2trigger,
         vmmArtData125   => vmmArtData,
         vmmArtReady     => vmmArtReady
    );

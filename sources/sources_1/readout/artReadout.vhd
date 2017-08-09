@@ -40,12 +40,16 @@ use UNISIM.vcomponents.all;
 
 entity artReadout is
     Generic( is_mmfe8   : std_logic;
-            artEnabled  : std_logic);
+            artEnabled  : std_logic;
+            slowTrigger : std_logic);
     Port (
             clk             : in std_logic;
             clk_art         : in std_logic;
-            trigger         : in std_logic;
+            trigger125      : in std_logic;
+            trigger160      : in std_logic;
+            tr_hold         : in std_logic;
             artData         : in std_logic_vector(8 downto 1);
+            art2trigger     : out std_logic_vector(5 downto 0);
             vmmArtData125   : out std_logic_vector(5 downto 0);
             vmmArtReady     : out std_logic
             );
@@ -56,24 +60,30 @@ architecture Behavioral of artReadout is
     signal enableReadout125     : std_logic := '0';
     signal enableReadout125_160 : std_logic := '0';
     signal enableReadout160     : std_logic := '0';
+    signal enableReadoutSlowTr  : std_logic := '0';
     signal vmmArtReady160       : std_logic := '0';
     signal vmmArtReady160_125   : std_logic := '0';
     signal vmmArtReady125       : std_logic := '0';
     signal artData_i            : std_logic := '0';
     signal artDataBuffed        : std_logic := '0';
     signal vmmArtData160_125    : std_logic_vector(5 downto 0) := ( others => '0' );
+    signal tr_hold160           : std_logic := '0';
+    signal tr_hold125_160       : std_logic := '0';
     
+    signal art2triggerCnt       : unsigned(5 downto 0) := ( others => '0' );
     signal vmmArtData           : unsigned(5 downto 0) := ( others => '0' );
     signal artCounter           : unsigned(3 downto 0) := ( others => '0' );
     
     type stateType is (S1, S2, S3, S4);
     signal state            : stateType := S1;
+    signal state160         : stateType := S1;
     signal stateReadout     : stateType := S1;
     
     -- Debugging
     signal probe0_out           : std_logic_vector(127 downto 0);
     signal debug1               : std_logic_vector(1 downto 0) := b"00";
     signal debug2               : std_logic_vector(1 downto 0) := b"00";
+    signal debug3               : std_logic_vector(1 downto 0) := b"00";
 
     -- ASYNC_REG attributes
     attribute ASYNC_REG : string;
@@ -85,7 +95,7 @@ architecture Behavioral of artReadout is
     attribute ASYNC_REG of artData_i            : signal is "TRUE";
     attribute ASYNC_REG of artData              : signal is "TRUE";
     attribute ASYNC_REG of vmmArtData160_125    : signal is "TRUE";
-    attribute ASYNC_REG of vmmArtData125         : signal is "TRUE";
+    attribute ASYNC_REG of vmmArtData125        : signal is "TRUE";
     
     -------------------------------------------------------------------
     -- Keep signals for ILA
@@ -93,7 +103,7 @@ architecture Behavioral of artReadout is
 --    attribute mark_debug : string;
 
 --    attribute mark_debug of artData                : signal is "true";
---    attribute mark_debug of trigger                : signal is "true";
+--    attribute mark_debug of trigger125             : signal is "true";
 --    attribute mark_debug of artCounter             : signal is "true";
 --    attribute mark_debug of vmmArtReady160         : signal is "true";
 --    attribute mark_debug of enableReadout160       : signal is "true";
@@ -119,43 +129,82 @@ begin
     result(i) := aa(i);
   end loop;
   return result;
-end; -- function reverse_any_vector
+end;
 
 begin
 
-Proc: process(clk)
+fastTrigProc: process(clk)
 begin
-    if (rising_edge(clk)) then
-        case state is
+    if slowTrigger = '0' then
+        if (rising_edge(clk)) then
+            case state is
+                when S1 =>
+                    debug1   <= b"00";
+                    if trigger125 = '1' and artEnabled = '1'  then
+                        state   <= S2;
+                    end if;
+                when S2 =>
+                    debug1   <= b"01";
+                    enableReadout125    <= '1';
+                    if vmmArtReady125 = '1' then
+                        state <= S3;
+                    end if;
+                    --start reading out ART data
+                    --when finish move to S3
+                when S3 =>
+                    debug1   <= b"10";
+                    enableReadout125    <= '0';
+                    state <= S1;
+
+                when others =>
+                    enableReadout125    <= '0';
+                    -- reset
+            end case;
+        end if;
+    end if;
+end process;
+
+slowTrigPro: process(clk_art)
+begin
+if slowTrigger = '1' and artEnabled = '1' then
+    if (rising_edge(clk_art)) then
+        case state160 is
             when S1 =>
-                debug1   <= b"00";
-                if trigger = '1' and artEnabled = '1'  then
-                    state   <= S2;
+                debug3              <= b"00";
+                if tr_hold160 = '0' then
+                    enableReadoutSlowTr <= '1';
+                    state160            <= S2;
                 end if;
             when S2 =>
-                debug1   <= b"01";
-                enableReadout125    <= '1';
-                if vmmArtReady125 = '1' then
-                    state <= S3;
+                debug3          <= b"01";
+                art2triggerCnt  <= b"000000";
+                if vmmArtReady160 = '1' then
+                    enableReadoutSlowTr <= '0';
+                    state160    <= S3;
                 end if;
                 --start reading out ART data
                 --when finish move to S3
             when S3 =>
-                debug1   <= b"10";
-                enableReadout125    <= '0';
-                state <= S1;
-
+                debug3              <= b"10";
+                art2triggerCnt      <= art2triggerCnt + 1;
+                if tr_hold160 = '1' then
+                    state160            <= S1;
+                elsif art2triggerCnt = b"111110" then
+                    state160            <= S1;
+                end if;
+                
             when others =>
-                enableReadout125    <= '0';
+                enableReadoutSlowTr <= '0';
                 -- reset
-        end case;
+            end case;
+        end if;
     end if;
 end process;
 
 readoutProc: process(clk_art)
 begin
     if rising_edge(clk_art) then
-        if (enableReadout160 = '1') then
+        if ((enableReadout160 = '1' and slowTrigger ='0') or (enableReadoutSlowTr = '1' and slowTrigger ='1')) then
             case stateReadout is
                 when S1 =>
                     --reset
@@ -215,13 +264,15 @@ end process;
 to160Synchronizer: process(clk_art) --40
 begin
     if rising_edge (clk_art) then
+        tr_hold125_160          <= tr_hold;
+        tr_hold160              <= tr_hold125_160;
         enableReadout125_160    <= enableReadout125;
         enableReadout160        <= enableReadout125_160;
     end if;
 end process;
 
-vmmArtReady    <= vmmArtReady125;
-
+vmmArtReady     <= vmmArtReady125;
+art2trigger     <= std_logic_vector(art2triggerCnt);
 
 --ilaArt: ila_art
 --port map
@@ -231,7 +282,7 @@ vmmArtReady    <= vmmArtReady125;
 --    );
 
 probe0_out(0)               <= artData(1);
-probe0_out(1)               <= trigger;
+probe0_out(1)               <= trigger125;
 probe0_out(5 downto 2)      <= std_logic_vector(artCounter); --4
 probe0_out(6)               <= enableReadout160;
 probe0_out(12 downto 7)     <= std_logic_vector(vmmArtData);

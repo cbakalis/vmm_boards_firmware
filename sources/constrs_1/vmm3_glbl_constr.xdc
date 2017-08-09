@@ -73,7 +73,7 @@ set_output_delay -clock clk_sck -min -2.950 [get_ports IO*_IO]
 
 #======================= TIMING EXCEPTIONS SECTION ====================
 #=============================== False Paths ==========================
-set_false_path -from [get_ports CH_TRIGGER]
+set_false_path -from [get_ports LEMO_TRIGGER]
 
 # Global reset false path
 set_false_path -reset_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_rst_reg]
@@ -83,6 +83,8 @@ set_false_path -reset_path -from [get_cells i2c_module/phy_resetn_reg]
 set_false_path -from [get_cells art_instance/vmmArtData_reg[*]] -to [get_cells art_instance/vmmArtData160_125_reg[*]]
 set_false_path -from [get_cells art_instance/vmmArtReady160_reg] -to [get_cells art_instance/vmmArtReady160_125_reg]
 set_false_path -from [get_cells art_instance/enableReadout125_reg] -to [get_cells art_instance/enableReadout125_160_reg]
+set_false_path -from [get_cells tr_hold_ext_s_reg] -to [get_cells art_instance/tr_hold125_160_reg]
+set_false_path -from [get_cells packet_formation_instance/tr_hold_reg] -to [get_cells art_instance/tr_hold125_160_reg]
 
 # FPGA configuration registers false paths
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/ckbc_out_reg]

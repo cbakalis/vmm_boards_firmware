@@ -73,6 +73,7 @@ entity trigger is
             event_counter   : out STD_LOGIC_VECTOR(31 DOWNTO 0);
             tr_out          : out STD_LOGIC;
             trraw_synced125 : out STD_LOGIC;
+            trraw_synced160 : out std_logic;
             latency         : in STD_LOGIC_VECTOR(15 DOWNTO 0)
             );
 end trigger;
@@ -563,6 +564,7 @@ trigLatency         <= to_integer(unsigned(latency));
 accept_wr           <= accept_wr_synced125;
 level_0             <= level_0_25ns;
 cktp_width_final    <= std_logic_vector(unsigned(cktp_pulse_width)*"1010000");  -- input x 80
+trraw_synced160     <= tr_out_i;
 
 -- Instantiations if any
 
