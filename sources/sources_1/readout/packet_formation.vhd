@@ -474,7 +474,7 @@ port map (
     end_packet      <= end_packet_int;
     trigVmmRo       <= triggerVmmReadout_i;
     vmmId           <= vmmId_i;
-    trigLatency     <= 50 + to_integer(unsigned(latency)); --(hard set to 300ns )--to_integer(unsigned(latency));
+    trigLatency     <= 50 + to_integer(unsigned(latency)); --(hard set to 400ns )--to_integer(unsigned(latency));
     pfBusy          <= pfBusy_i;
     globBCID_etr    <= glBCID;
     

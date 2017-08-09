@@ -51,7 +51,8 @@ entity artReadout is
             artData         : in std_logic_vector(8 downto 1);
             art2trigger     : out std_logic_vector(5 downto 0);
             vmmArtData125   : out std_logic_vector(5 downto 0);
-            vmmArtReady     : out std_logic
+            vmmArtReady     : out std_logic;
+            artTimeout      : in std_logic_vector(7 downto 0)
             );
 end artReadout;
 
@@ -69,6 +70,8 @@ architecture Behavioral of artReadout is
     signal vmmArtData160_125    : std_logic_vector(5 downto 0) := ( others => '0' );
     signal tr_hold160           : std_logic := '0';
     signal tr_hold125_160       : std_logic := '0';
+    signal art2trigger125       : std_logic_vector(5 downto 0) := ( others => '0' );
+    signal art2trigger160_125   : std_logic_vector(5 downto 0) := ( others => '0' );
     
     signal art2triggerCnt       : unsigned(5 downto 0) := ( others => '0' );
     signal vmmArtData           : unsigned(5 downto 0) := ( others => '0' );
@@ -95,7 +98,11 @@ architecture Behavioral of artReadout is
     attribute ASYNC_REG of artData_i            : signal is "TRUE";
     attribute ASYNC_REG of artData              : signal is "TRUE";
     attribute ASYNC_REG of vmmArtData160_125    : signal is "TRUE";
-    attribute ASYNC_REG of vmmArtData125        : signal is "TRUE";
+    attribute ASYNC_REG of vmmArtData125        : signal is "TRUE"; 
+    attribute ASYNC_REG of tr_hold              : signal is "TRUE";
+    attribute ASYNC_REG of tr_hold125_160       : signal is "TRUE";
+    attribute ASYNC_REG of art2trigger125       : signal is "TRUE";
+    attribute ASYNC_REG of art2trigger160_125   : signal is "TRUE";
     
     -------------------------------------------------------------------
     -- Keep signals for ILA
@@ -189,7 +196,7 @@ if slowTrigger = '1' and artEnabled = '1' then
                 art2triggerCnt      <= art2triggerCnt + 1;
                 if tr_hold160 = '1' then
                     state160            <= S1;
-                elsif art2triggerCnt = b"111110" then
+                elsif art2triggerCnt = unsigned(artTimeout) then
                     state160            <= S1;
                 end if;
                 
@@ -258,6 +265,8 @@ begin
         vmmArtReady125          <= vmmArtReady160_125;
         vmmArtData160_125       <= std_logic_vector(vmmArtData);
         vmmArtData125           <= vmmArtData160_125;
+        art2trigger160_125      <= std_logic_vector(art2triggerCnt);
+        art2trigger125          <= art2trigger160_125;
     end if;
 end process;
 
@@ -272,7 +281,7 @@ begin
 end process;
 
 vmmArtReady     <= vmmArtReady125;
-art2trigger     <= std_logic_vector(art2triggerCnt);
+art2trigger     <= art2trigger125;
 
 --ilaArt: ila_art
 --port map

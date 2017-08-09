@@ -82,9 +82,11 @@ set_false_path -reset_path -from [get_cells i2c_module/phy_resetn_reg]
 # ART readout
 set_false_path -from [get_cells art_instance/vmmArtData_reg[*]] -to [get_cells art_instance/vmmArtData160_125_reg[*]]
 set_false_path -from [get_cells art_instance/vmmArtReady160_reg] -to [get_cells art_instance/vmmArtReady160_125_reg]
-set_false_path -from [get_cells art_instance/enableReadout125_reg] -to [get_cells art_instance/enableReadout125_160_reg]
 set_false_path -from [get_cells tr_hold_ext_s_reg] -to [get_cells art_instance/tr_hold125_160_reg]
+set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ext_trigger_reg] -to [get_cells art_instance/tr_hold125_160_reg]
 set_false_path -from [get_cells packet_formation_instance/tr_hold_reg] -to [get_cells art_instance/tr_hold125_160_reg]
+set_false_path -from [get_cells art_instance/art2triggerCnt_reg[*]] -to [get_cells art_instance/art2trigger160_125_reg[*]]
+set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/artTimeout_i_reg[*]] -to [get_cells art_instance/state160_reg[*]]
 
 # FPGA configuration registers false paths
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/ckbc_out_reg]

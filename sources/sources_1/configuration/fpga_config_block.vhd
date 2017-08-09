@@ -95,7 +95,8 @@ entity fpga_config_block is
     tr_delay_limit      : out std_logic_vector(15 downto 0);
     daq_on              : out std_logic;
     ext_trigger         : out std_logic;
-    ckbcMode            : out std_logic
+    ckbcMode            : out std_logic;
+    artTimeout          : out std_logic_vector(7 downto 0)
     );
 end fpga_config_block;
 
@@ -152,7 +153,8 @@ component fpga_config_router
     daq_state           : out std_logic_vector(7 downto 0);
     trig_state          : out std_logic_vector(7 downto 0);
     ro_state            : out std_logic_vector(7 downto 0);
-    fpga_rst_state      : out std_logic_vector(7 downto 0)
+    fpga_rst_state      : out std_logic_vector(7 downto 0);
+    artTimeout          : out std_logic_vector(7 downto 0)
     );
 end component;
     
@@ -489,7 +491,8 @@ fpga_conf_router_inst: fpga_config_router
     daq_state           => daq_state_reg,
     trig_state          => trig_state_reg,
     ro_state            => ro_state_reg,
-    fpga_rst_state      => fpga_rst_reg
+    fpga_rst_state      => fpga_rst_reg,
+    artTimeout          => artTimeout
     );
 
 reg_addr_buffer: fpga_reg_buffer

@@ -491,6 +491,7 @@ architecture Behavioral of vmmFrontEnd is
     signal ctf_rst_s1         : std_logic := '0';
     signal tr_delay_limit     : std_logic_vector(15 downto 0) := x"2000";
     signal art2trigger        : std_logic_vector(5 downto 0) := (others => '0');
+    signal artTimeout         : std_logic_vector(7 downto 0) := (others => '0');
   
     -------------------------------------------------
     -- Event Timing & Soft Reset
@@ -1210,6 +1211,7 @@ architecture Behavioral of vmmFrontEnd is
         ext_trigger         : out std_logic;
         ckbcMode            : out std_logic;
         fpga_rst            : out std_logic;
+        artTimeout          : out std_logic_vector(7 downto 0);
         ------------------------------------
         -------- UDP Interface -------------
         udp_rx              : in  udp_rx_type;
@@ -1438,7 +1440,8 @@ architecture Behavioral of vmmFrontEnd is
         artData         : in std_logic_vector(8 downto 1);
         art2trigger     : out std_logic_vector(5 downto 0);
         vmmArtData125   : out std_logic_vector(5 downto 0);
-        vmmArtReady     : out std_logic
+        vmmArtReady     : out std_logic;
+        artTimeout      : in std_logic_vector(7 downto 0)
     );
     end component;
     -- 23
@@ -1706,6 +1709,7 @@ udp_din_conf_block: udp_data_in_handler
         ext_trigger         => trig_mode_int,
         ckbcMode            => ckbcMode,
         fpga_rst            => glbl_rst_i,
+        artTimeout          => artTimeout,
         ------------------------------------
         -------- UDP Interface -------------
         udp_rx              => udp_rx_int,
@@ -2111,7 +2115,8 @@ art_instance: artReadout
         artData         => art_in_vec,
         art2trigger     => art2trigger,
         vmmArtData125   => vmmArtData,
-        vmmArtReady     => vmmArtReady
+        vmmArtReady     => vmmArtReady,
+        artTimeout      => artTimeout
    );
 
 vmm_oddr_inst: vmm_oddr_wrapper

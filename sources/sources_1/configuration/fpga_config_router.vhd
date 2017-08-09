@@ -74,7 +74,8 @@ entity fpga_config_router is
     daq_state           : out std_logic_vector(7 downto 0);
     trig_state          : out std_logic_vector(7 downto 0);
     ro_state            : out std_logic_vector(7 downto 0);
-    fpga_rst_state      : out std_logic_vector(7 downto 0)
+    fpga_rst_state      : out std_logic_vector(7 downto 0);
+    artTimeout          : out std_logic_vector(7 downto 0)
     );
 end fpga_config_router;
 
@@ -121,30 +122,10 @@ architecture RTL of fpga_config_router is
     --signal ro_state_ena         : std_logic := '0';
     ---- 18
     --signal fpga_rst_ena         : std_logic := '0';
+    ---- 20
+    --signal artTimeout           : std_logic := '0';
 
     signal ena_bus              : std_logic_vector(31 downto 0) := (others => '0');
-
-    -- internal registers
-    signal daq_state_reg        : std_logic_vector(7 downto 0)  := (others => '0');
-    signal trig_state_reg       : std_logic_vector(7 downto 0)  := (others => '0');
-    signal ro_state_reg         : std_logic_vector(7 downto 0)  := (others => '0');
-    signal fpga_rst_reg         : std_logic_vector(7 downto 0)  := (others => '0');
-    signal myMAC_0              : std_logic_vector(15 downto 0) := (others => '0');
-    signal myMAC_1              : std_logic_vector(31 downto 0) := (others => '0');
-    signal latency_i            : std_logic_vector(15 downto 0) := (others => '0');
-    signal cktk_max_num_i       : std_logic_vector(7 downto 0)  := (others => '0');
-    signal ckbc_freq_i          : std_logic_vector(7 downto 0)  := (others => '0');
-    signal cktp_max_num_i       : std_logic_vector(15 downto 0) := (others => '0');
-    signal cktp_skew_i          : std_logic_vector(7 downto 0)  := (others => '0');
-    signal cktp_period_i        : std_logic_vector(15 downto 0) := (others => '0');
-    signal cktp_width_i         : std_logic_vector(7 downto 0)  := (others => '0');
-    signal ckbc_max_num_i       : std_logic_vector(7 downto 0)  := (others => '0');
-    signal tr_delay_limit_i     : std_logic_vector(15 downto 0) := (others => '0');
-    signal vmm_id_xadc_i        : std_logic_vector(15 downto 0) := (others => '0');
-    signal xadc_sample_size_i   : std_logic_vector(10 downto 0) := (others => '0');
-    signal xadc_delay_i         : std_logic_vector(17 downto 0) := (others => '0');
-    signal destIP_set_i         : std_logic_vector(31 downto 0) := (others => '0');
-    signal myIP_set_i           : std_logic_vector(31 downto 0) := (others => '0');
 
 function bit_reverse(s1:std_logic_vector) return std_logic_vector is 
     variable rr : std_logic_vector(s1'high downto s1'low); 
@@ -154,6 +135,31 @@ function bit_reverse(s1:std_logic_vector) return std_logic_vector is
         end loop; 
         return rr; 
 end bit_reverse; 
+
+    -- internal registers
+    signal daq_state_reg        : std_logic_vector(7 downto 0)  := (others => '0');
+    signal trig_state_reg       : std_logic_vector(7 downto 0)  := (others => '0');
+    signal ro_state_reg         : std_logic_vector(7 downto 0)  := (others => '0');
+    signal fpga_rst_reg         : std_logic_vector(7 downto 0)  := (others => '0');
+    signal myMAC_0              : std_logic_vector(15 downto 0) := (others => '0');
+    signal myMAC_1              : std_logic_vector(31 downto 0) := (others => '0');
+    signal latency_i            : std_logic_vector(15 downto 0) := (others => '0');
+    signal cktk_max_num_i       : std_logic_vector(7 downto 0)  := bit_reverse(x"07");
+    signal ckbc_freq_i          : std_logic_vector(7 downto 0)  := bit_reverse(x"28");
+    signal cktp_max_num_i       : std_logic_vector(15 downto 0) := bit_reverse(x"ffff");
+    signal cktp_skew_i          : std_logic_vector(7 downto 0)  := (others => '0');
+    signal cktp_period_i        : std_logic_vector(15 downto 0) := bit_reverse(x"7530");
+    signal cktp_width_i         : std_logic_vector(7 downto 0)  := bit_reverse(x"04");
+    signal ckbc_max_num_i       : std_logic_vector(7 downto 0)  := bit_reverse(x"06");
+    signal tr_delay_limit_i     : std_logic_vector(15 downto 0) := bit_reverse(x"ffff");
+    signal vmm_id_xadc_i        : std_logic_vector(15 downto 0) := (others => '0');
+    signal xadc_sample_size_i   : std_logic_vector(10 downto 0) := (others => '0');
+    signal xadc_delay_i         : std_logic_vector(17 downto 0) := (others => '0');
+    signal destIP_set_i         : std_logic_vector(31 downto 0) := (others => '0');
+    signal myIP_set_i           : std_logic_vector(31 downto 0) := (others => '0');
+    signal artTimeout_i         : std_logic_vector(7 downto 0)  := bit_reverse(x"18");
+
+
 
 begin
 
@@ -174,6 +180,7 @@ begin
     when x"c6"  => ena_bus(11) <= sreg_ena; ena_bus(10 downto 0) <= (others => '0'); ena_bus(31 downto 12) <= (others => '0'); -- CKTP width
     when x"c7"  => ena_bus(14) <= sreg_ena; ena_bus(13 downto 0) <= (others => '0'); ena_bus(31 downto 15) <= (others => '0'); -- CKBC max
     when x"c8"  => ena_bus(13) <= sreg_ena; ena_bus(12 downto 0) <= (others => '0'); ena_bus(31 downto 14) <= (others => '0'); -- trigger delay
+    when x"c9"  => ena_bus(20) <= sreg_ena; ena_bus(19 downto 0) <= (others => '0'); ena_bus(31 downto 21) <= (others => '0'); -- art timeout
     ----- xADC conf ------
     when x"a1"  => ena_bus(0)  <= sreg_ena; ena_bus(31 downto 1) <= (others => '0'); ena_bus(31 downto 1)  <= (others => '0'); -- VMM ID xADC
     when x"a2"  => ena_bus(1)  <= sreg_ena; ena_bus(0 downto 0)  <= (others => '0'); ena_bus(31 downto 2)  <= (others => '0'); -- xADC sample size
@@ -208,6 +215,7 @@ begin
             if(ena_bus(11) = '1')then cktp_width_i      <= reg_value_bit & cktp_width_i(7 downto 1);        else null; end if;
             if(ena_bus(14) = '1')then ckbc_max_num_i    <= reg_value_bit & ckbc_max_num_i(7 downto 1);      else null; end if;
             if(ena_bus(13) = '1')then tr_delay_limit_i  <= reg_value_bit & tr_delay_limit_i(15 downto 1);   else null; end if;
+            if(ena_bus(20) = '1')then artTimeout_i      <= reg_value_bit & artTimeout_i(7 downto 1);        else null; end if;
                 ----- xADC conf ------
             if(ena_bus(0) = '1')then vmm_id_xadc_i      <= reg_value_bit & vmm_id_xadc_i(15 downto 1);      else null; end if;
             if(ena_bus(1) = '1')then xadc_sample_size_i <= reg_value_bit & xadc_sample_size_i(10 downto 1); else null; end if;
@@ -240,6 +248,7 @@ end process;
     trig_state      <= bit_reverse(trig_state_reg);
     ro_state        <= bit_reverse(ro_state_reg);
     fpga_rst_state  <= bit_reverse(fpga_rst_reg);
+    artTimeout      <= bit_reverse(artTimeout_i);
     
 
 end RTL;
