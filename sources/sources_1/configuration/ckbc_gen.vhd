@@ -53,7 +53,7 @@ entity ckbc_gen is
         ready           : in  std_logic;
         ckbc_ro_out     : out std_logic;
         ckbc_out        : out std_logic;
-        ckbc_max_num    : in std_logic_vector(7 downto 0)
+        ckbc_max_num    : in  std_logic_vector(7 downto 0)
     );
 end ckbc_gen;
 

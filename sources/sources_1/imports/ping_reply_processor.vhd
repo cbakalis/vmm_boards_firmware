@@ -49,6 +49,7 @@ entity ping_reply_processor is
         tx_clk                  : in std_logic;
         rx_clk                  : in std_logic;
         reset                   : in std_logic;
+        fifo_init               : in std_logic;
         -- ICMP/UDP mux interface
         sel_icmp                : out std_logic;
         -- ICMP TX interface
@@ -86,7 +87,8 @@ architecture Behavioral of ping_reply_processor is
     signal tx_ena               : std_logic := '0';
 
     signal rd_ena               : std_logic := '0';
-    signal rst_fifo             : std_logic := '0';
+    signal rst_fifo_fsm         : std_logic := '0';
+    signal rst_fifo             : std_logic := '0'; 
     signal fifo_empty           : std_logic := '0';
     signal fifo_full            : std_logic := '0';
     signal data_last            : std_logic := '0';
@@ -178,7 +180,7 @@ begin
     if(rising_edge(tx_clk))then
         if(reset = '1')then
             rd_ena          <= '0';
-            rst_fifo        <= '0';
+            rst_fifo_fsm    <= '0';
             data_last       <= '0';
             data_valid      <= '0';
             icmp_tx_start   <= '0';
@@ -187,7 +189,7 @@ begin
         else
             case ping_tx_state is
             when IDLE =>
-                rst_fifo <= '0';
+                rst_fifo_fsm <= '0';
 
                 if(tx_ena = '1')then
                     sel_icmp        <= '1';
@@ -228,7 +230,7 @@ begin
                     rd_ena          <= '0';
                     data_valid      <= '0';
                     data_last       <= '1';
-                    rst_fifo        <= '1';
+                    rst_fifo_fsm    <= '1';
                     ping_tx_state   <= DELAY;
                 else
                     rd_ena          <= '1';
@@ -239,7 +241,7 @@ begin
 
             when DELAY =>
                 data_last       <= '0';
-                rst_fifo        <= '1';
+                rst_fifo_fsm    <= '1';
 
                 if(icmp_tx_is_idle = '1')then
                     ping_tx_state   <= IDLE;
@@ -290,6 +292,7 @@ fifo_payload_buffer: icmp_payload_buffer
     );
  
     icmp_txo.payload.data_out_last  <= data_last;
+    rst_fifo                        <= rst_fifo_fsm or fifo_init;
 
 end Behavioral;
 
