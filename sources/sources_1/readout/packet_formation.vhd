@@ -134,7 +134,7 @@ architecture Behavioral of packet_formation is
 -----------------------------------------------------------------
 
 ----------------------  Debugging ------------------------------
---    attribute mark_debug : string;
+    attribute mark_debug : string;
 
 --    attribute mark_debug of header                :    signal    is    "true";
 --    attribute mark_debug of globBcid              :    signal    is    "true";
@@ -505,7 +505,8 @@ port map (
     probe0_out(29 downto 24)           <= vmmArtData125;
     probe0_out(132 downto 30)          <= (others => '0');--vmmId_i;
 
-    probe1_out(63 downto 0)             <= (others => '0');--daqFIFO_din;
+    probe1_out(15 downto 0)             <= daqFIFO_din;
+    probe1_out(63 downto 16)            <= (others => '0');
     probe1_out(64)                      <= vmmWordReady;
     probe1_out(65)                      <= vmmEventDone;
     probe1_out(66)                      <= '0';

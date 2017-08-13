@@ -112,7 +112,7 @@ architecture Behavioral of FIFO2UDP is
     signal len_cnt                     : unsigned(7 downto 0) := "00000000";
     signal rst_fifo                    : std_logic := '0';
   
---    attribute mark_debug : string;
+    attribute mark_debug : string;
 --    attribute mark_debug of prog_fifo_empty         : signal is "true";
 --    attribute mark_debug of fifo_empty_UDP          : signal is "true";     
 --    attribute mark_debug of daq_fifo_re             : signal is "true";     
@@ -138,7 +138,8 @@ architecture Behavioral of FIFO2UDP is
 --    attribute mark_debug of fifo_len_wr_en          : signal is "true";
 --    attribute mark_debug of fifo_len_rd_en          : signal is "true";
 --    attribute mark_debug of packet_len_r            : signal is "true";
-  
+--    attribute mark_debug of daq_data_in            : signal is "true";
+
 component readout_fifo is
 
 port(
@@ -438,7 +439,11 @@ daq_out(113)            <= '0';
 daq_out(129 downto 114) <= std_logic_vector(packet_length);
 daq_out(145 downto 130) <= std_logic_vector(count_length);     
 daq_out(157 downto 146) <= packet_len_r;
-daq_out(221 downto 158) <= (others => '0');
+
+daq_out(173 downto 158) <= daq_data_in;
+
+daq_out(221 downto 174) <= (others => '0');
+
 daq_out(222)            <= wr_en_int;
 daq_out(223)            <= wr_en;
 daq_out(235 downto 224) <= packet_length_in;

@@ -78,26 +78,26 @@ set_property IOSTANDARD LVCMOS33      [get_ports LOCKED_LED]
 
 #BUSY IN/OUT
 ######################### IP 02 ###############################
-set_property PACKAGE_PIN Y16          [get_ports BUSY_IN_P]
-set_property PACKAGE_PIN AA16         [get_ports BUSY_IN_N]
-set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_P]
-set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_N]
-
-set_property PACKAGE_PIN AB16         [get_ports BUSY_OUT_P]
-set_property PACKAGE_PIN AB17         [get_ports BUSY_OUT_N]
-set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_P]
-set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_N]
-
-######################### IP 03 ###############################
-#set_property PACKAGE_PIN AB16         [get_ports BUSY_IN_P]
-#set_property PACKAGE_PIN AB17         [get_ports BUSY_IN_N]
+#set_property PACKAGE_PIN Y16          [get_ports BUSY_IN_P]
+#set_property PACKAGE_PIN AA16         [get_ports BUSY_IN_N]
 #set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_P]
 #set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_N]
 
-#set_property PACKAGE_PIN Y16          [get_ports BUSY_OUT_P]
-#set_property PACKAGE_PIN AA16         [get_ports BUSY_OUT_N]
+#set_property PACKAGE_PIN AB16         [get_ports BUSY_OUT_P]
+#set_property PACKAGE_PIN AB17         [get_ports BUSY_OUT_N]
 #set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_P]
 #set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_N]
+
+######################### IP 03 ###############################
+set_property PACKAGE_PIN AB16         [get_ports BUSY_IN_P]
+set_property PACKAGE_PIN AB17         [get_ports BUSY_IN_N]
+set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_P]
+set_property IOSTANDARD LVDS_25       [get_ports BUSY_IN_N]
+
+set_property PACKAGE_PIN Y16          [get_ports BUSY_OUT_P]
+set_property PACKAGE_PIN AA16         [get_ports BUSY_OUT_N]
+set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_P]
+set_property IOSTANDARD LVDS_25       [get_ports BUSY_OUT_N]
 
 ############################ MO MMFE1 #########################
 set_property PACKAGE_PIN H13         [get_ports MO]

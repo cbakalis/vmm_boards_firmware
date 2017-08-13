@@ -558,28 +558,28 @@ port map(
 --        probe0                  =>  probe0_out
 --    );
 
---    probe0_out(0)               <= vmm_cktk_i;                                                                     -- OK
---    probe0_out(4 downto 1)      <= state_tk;                                                                       -- OK
---    probe0_out(5)               <= vmm_data0;
---    probe0_out(7 downto 6)      <= (others => '0');
---    probe0_out(10 downto 8)     <= (others => '0');                                                                -- OK
---    probe0_out(14 downto 11)    <= state_dt;                                                                       -- OK
---    probe0_out(15)              <= daq_enable_ff_sync;                                                             -- OK
---    probe0_out(16)              <= reading_out_word;                                                               -- OK
---    probe0_out(17)              <= cktkSent_ff_sync;                                                               -- OK
---    probe0_out(18)              <= vmm_ckdt_i;                                                                     -- OK
---    probe0_out(19)              <= vmm_data0_ff_sync;                                                              -- OK
---    probe0_out(20)              <= vmm_data1_ff_sync;                                                              -- OK
---    probe0_out(25 downto 21)    <= std_logic_vector(to_unsigned(dataBitRead, probe0_out(28 downto 24)'length));    -- OK
---    probe0_out(26)              <= vmmWordReady_i;                                                                 -- OK
---    probe0_out(90 downto 27)    <= vmmWord_i;                                                                      -- OK
---    probe0_out(91)              <= trigger_pulse;                                                                  -- OK 
---    probe0_out(92)              <= reading_out_word_ff_sync;
---    probe0_out(96 downto 93)    <= std_logic_vector(timeoutCnt);
---    probe0_out(97)              <= fifo_empty;
---    probe0_out(98)              <= rd_en;
---    probe0_out(99)              <= wr_en;
---    probe0_out(102 downto 100)   <= dbg_intf_state;
---    probe0_out(127 downto 103)  <= (others => '0');
+    probe0_out(0)               <= vmm_cktk_i;                                                                     -- OK
+    probe0_out(4 downto 1)      <= state_tk;                                                                       -- OK
+    probe0_out(5)               <= vmm_data0;
+    probe0_out(7 downto 6)      <= (others => '0');
+    probe0_out(10 downto 8)     <= (others => '0');                                                                -- OK
+    probe0_out(14 downto 11)    <= state_dt;                                                                       -- OK
+    probe0_out(15)              <= daq_enable_ff_sync;                                                             -- OK
+    probe0_out(16)              <= reading_out_word;                                                               -- OK
+    probe0_out(17)              <= cktkSent_ff_sync;                                                               -- OK
+    probe0_out(18)              <= vmm_ckdt_i;                                                                     -- OK
+    probe0_out(19)              <= vmm_data0_ff_sync;                                                              -- OK
+    probe0_out(20)              <= vmm_data1_ff_sync;                                                              -- OK
+    probe0_out(25 downto 21)    <= std_logic_vector(to_unsigned(dataBitRead, probe0_out(28 downto 24)'length));    -- OK
+    probe0_out(26)              <= vmmWordReady_i;                                                                 -- OK
+    probe0_out(90 downto 27)    <= vmmWord_i;                                                                      -- OK
+    probe0_out(91)              <= trigger_pulse;                                                                  -- OK 
+    probe0_out(92)              <= reading_out_word_ff_sync;
+    probe0_out(96 downto 93)    <= std_logic_vector(timeoutCnt);
+    probe0_out(97)              <= fifo_empty;
+    probe0_out(98)              <= rd_en;
+    probe0_out(99)              <= wr_en;
+    probe0_out(102 downto 100)   <= dbg_intf_state;
+    probe0_out(127 downto 103)  <= (others => '0');
 
 end Behavioral;

@@ -278,8 +278,8 @@ architecture Behavioral of vmmFrontEnd is
     -- Global Settings
     ------------------------------------------------------------------- 
     -- Default IP and MAC address of the board
-    signal default_IP       : std_logic_vector(31 downto 0) := x"c0a80002";
-    signal default_MAC      : std_logic_vector(47 downto 0) := x"002320189229";
+    signal default_IP       : std_logic_vector(31 downto 0) := x"c0a80003";
+    signal default_MAC      : std_logic_vector(47 downto 0) := x"002320189263";
     signal default_destIP   : std_logic_vector(31 downto 0) := x"c0a80010";
     -- Set to '1' for MMFE8 or '0' for 1-VMM boards
     constant is_mmfe8       : std_logic := '0';
@@ -783,9 +783,11 @@ architecture Behavioral of vmmFrontEnd is
 --    attribute mark_debug of pf_trigVmmRo              : signal is "TRUE";
 --    attribute mark_debug of dt_cntr_st                : signal is "TRUE";
 --    attribute mark_debug of linkHealth_bmsk           : signal is "TRUE";
-
 --    attribute mark_debug of EXT_TRIGGER_i             : signal is "TRUE";
 --    attribute mark_debug of ctf_rst_s1                : signal is "TRUE";
+--    attribute mark_debug of tr_hold_all               : signal is "TRUE";
+--    attribute mark_debug of vmmArtReady               : signal is "TRUE";
+--    attribute mark_debug of vmmArtData                : signal is "TRUE";
 
     -------------------------------------------------------------------
     -- Other
@@ -1441,7 +1443,8 @@ architecture Behavioral of vmmFrontEnd is
         art2trigger     : out std_logic_vector(5 downto 0);
         vmmArtData125   : out std_logic_vector(5 downto 0);
         vmmArtReady     : out std_logic;
-        artTimeout      : in std_logic_vector(7 downto 0)
+        artTimeout      : in std_logic_vector(7 downto 0);
+        request2ckbc    : in std_logic
     );
     end component;
     -- 23
@@ -2116,7 +2119,8 @@ art_instance: artReadout
         art2trigger     => art2trigger,
         vmmArtData125   => vmmArtData,
         vmmArtReady     => vmmArtReady,
-        artTimeout      => artTimeout
+        artTimeout      => artTimeout,
+        request2ckbc    => request2ckbc
    );
 
 vmm_oddr_inst: vmm_oddr_wrapper
@@ -2688,27 +2692,28 @@ end process;
 --        probe_out1  => default_MAC
 --      );
     
---    overviewProbe(3 downto 0)          <= is_state;
---    overviewProbe(8 downto 4)          <= pf_dbg_st;
---    overviewProbe(9)                   <= vmmWordReady_i;
---    overviewProbe(10)                  <= vmmEventDone_i;
---    overviewProbe(11)                  <= daq_enable_i;
---    overviewProbe(12)                  <= pf_trigVmmRo;
---    overviewProbe(14 downto 13)        <= (others => '0');
---    overviewProbe(15)                  <= rd_ena_buff;
---    overviewProbe(19 downto 16)        <= dt_state;
---    overviewProbe(23 downto 20)        <= FIFO2UDP_state;
---    overviewProbe(24)                  <= CKTP_glbl;
---    overviewProbe(25)                  <= UDPDone;
---    overviewProbe(26)                  <= CKBC_glbl;
---    overviewProbe(27)                  <= tr_out_i;
---    overviewProbe(29 downto 28)        <= (others => '0');
---    overviewProbe(30)                  <= level_0;
---    overviewProbe(31)                  <= rst_l0_pf;
---    overviewProbe(47 downto 32)        <= vmmWord_i;
---    overviewProbe(51 downto 48)        <= dt_cntr_st;
---    overviewProbe(59 downto 52)        <= linkHealth_bmsk;
---    overviewProbe(63 downto 60)        <= (others => '0');
+    overviewProbe(3 downto 0)          <= is_state;
+    overviewProbe(8 downto 4)          <= pf_dbg_st;
+    overviewProbe(9)                   <= vmmWordReady_i;
+    overviewProbe(10)                  <= vmmEventDone_i;
+    overviewProbe(11)                  <= daq_enable_i;
+    overviewProbe(12)                  <= pf_trigVmmRo;
+    overviewProbe(13)                  <= vmmArtReady;
+    overviewProbe(14)                  <= tr_hold_all;
+    overviewProbe(15)                  <= rd_ena_buff;
+    overviewProbe(19 downto 16)        <= dt_state;
+    overviewProbe(23 downto 20)        <= FIFO2UDP_state;
+    overviewProbe(24)                  <= CKTP_glbl;
+    overviewProbe(25)                  <= UDPDone;
+    overviewProbe(26)                  <= CKBC_glbl;
+    overviewProbe(27)                  <= tr_out_i;
+    overviewProbe(29 downto 28)        <= (others => '0');
+    overviewProbe(30)                  <= level_0;
+    overviewProbe(31)                  <= rst_l0_pf;
+    overviewProbe(47 downto 32)        <= vmmWord_i;
+    overviewProbe(51 downto 48)        <= dt_cntr_st;
+    overviewProbe(57 downto 52)        <= (others => '0');
+    overviewProbe(63 downto 58)        <= vmmArtData;
 
     vmmSignalsProbe(7 downto 0)        <= (others => '0');
     vmmSignalsProbe(15 downto 8)       <= cktk_out_vec;

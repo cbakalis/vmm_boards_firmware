@@ -52,7 +52,8 @@ entity artReadout is
             art2trigger     : out std_logic_vector(5 downto 0);
             vmmArtData125   : out std_logic_vector(5 downto 0);
             vmmArtReady     : out std_logic;
-            artTimeout      : in std_logic_vector(7 downto 0)
+            artTimeout      : in std_logic_vector(7 downto 0);
+            request2ckbc    : in std_logic
             );
 end artReadout;
 
@@ -72,12 +73,14 @@ architecture Behavioral of artReadout is
     signal tr_hold125_160       : std_logic := '0';
     signal art2trigger125       : std_logic_vector(5 downto 0) := ( others => '0' );
     signal art2trigger160_125   : std_logic_vector(5 downto 0) := ( others => '0' );
+    signal artTimeout160        : std_logic_vector(7 downto 0) := ( others => '0' );
+    signal artTimeout125_160    : std_logic_vector(7 downto 0) := ( others => '0' );
     
     signal art2triggerCnt       : unsigned(5 downto 0) := ( others => '0' );
     signal vmmArtData           : unsigned(5 downto 0) := ( others => '0' );
     signal artCounter           : unsigned(3 downto 0) := ( others => '0' );
     
-    type stateType is (S1, S2, S3, S4);
+    type stateType is (S1, S2, S3, S4, S5);
     signal state            : stateType := S1;
     signal state160         : stateType := S1;
     signal stateReadout     : stateType := S1;
@@ -99,15 +102,17 @@ architecture Behavioral of artReadout is
     attribute ASYNC_REG of artData              : signal is "TRUE";
     attribute ASYNC_REG of vmmArtData160_125    : signal is "TRUE";
     attribute ASYNC_REG of vmmArtData125        : signal is "TRUE"; 
-    attribute ASYNC_REG of tr_hold              : signal is "TRUE";
+    attribute ASYNC_REG of tr_hold160           : signal is "TRUE";
     attribute ASYNC_REG of tr_hold125_160       : signal is "TRUE";
     attribute ASYNC_REG of art2trigger125       : signal is "TRUE";
     attribute ASYNC_REG of art2trigger160_125   : signal is "TRUE";
+    attribute ASYNC_REG of artTimeout160        : signal is "TRUE";
+    attribute ASYNC_REG of artTimeout125_160    : signal is "TRUE";
     
     -------------------------------------------------------------------
     -- Keep signals for ILA
     -----------------------------------------------------------------
---    attribute mark_debug : string;
+    attribute mark_debug : string;
 
 --    attribute mark_debug of artData                : signal is "true";
 --    attribute mark_debug of trigger125             : signal is "true";
@@ -117,9 +122,14 @@ architecture Behavioral of artReadout is
 --    attribute mark_debug of artDataBuffed          : signal is "true";
 --    attribute mark_debug of debug1                 : signal is "true";
 --    attribute mark_debug of debug2                 : signal is "true";
+--    attribute mark_debug of debug3                 : signal is "true";
 --    attribute mark_debug of vmmArtReady125         : signal is "true";
-    
-    
+--    attribute mark_debug of art2triggerCnt         : signal is "true";
+--    attribute mark_debug of enableReadoutSlowTr    : signal is "true";
+--    attribute mark_debug of trigger160             : signal is "true";
+--    attribute mark_debug of tr_hold160             : signal is "true";
+--    attribute mark_debug of request2ckbc           : signal is "true";
+
 component ila_art
 port(
     clk     : in std_logic;
@@ -185,19 +195,29 @@ if slowTrigger = '1' and artEnabled = '1' then
             when S2 =>
                 debug3          <= b"01";
                 art2triggerCnt  <= b"000000";
-                if vmmArtReady160 = '1' then
-                    enableReadoutSlowTr <= '0';
-                    state160    <= S3;
+                if artDataBuffed = '1' then
+                    art2triggerCnt      <= art2triggerCnt + 1;
+                    state160            <= S3;
                 end if;
                 --start reading out ART data
                 --when finish move to S3
-            when S3 =>
-                debug3              <= b"10";
-                art2triggerCnt      <= art2triggerCnt + 1;
-                if tr_hold160 = '1' then
+            when S3 => -- Count
+                debug3              <= b"10";      
+                if (tr_hold160 ='0' and trigger160 = '1') then
+                    state160            <= S4;
+                elsif art2triggerCnt >= unsigned(artTimeout160) then
                     state160            <= S1;
-                elsif art2triggerCnt = unsigned(artTimeout) then
+                else
+                    art2triggerCnt      <= art2triggerCnt + 1;
+                end if;
+                if vmmArtReady160 = '1' then enableReadoutSlowTr <= '0'; end if;
+                
+            when S4 => -- Counter stopped
+                debug3              <= b"11";               
+                if  (tr_hold160 ='1' and enableReadoutSlowTr = '0') then
                     state160            <= S1;
+                elsif vmmArtReady160 = '1' then
+                    enableReadoutSlowTr <= '0';
                 end if;
                 
             when others =>
@@ -234,10 +254,9 @@ begin
                     end if;
                     
                 when S3 =>
-                    debug2   <= b"10";
+                    debug2          <= b"10";
                     vmmArtReady160  <= '1';
-                    artCounter      <= artCounter - 1;
-                    if artCounter = 0 then
+                    if state160 = S1 then
                         stateReadout    <= S1;
                     end if;
 
@@ -245,6 +264,10 @@ begin
                     artCounter      <= ( others => '0' );
                     vmmArtReady160  <= '0';
             end case;
+        else
+            artCounter      <= ( others => '0' );
+            vmmArtReady160  <= '0';
+            stateReadout    <= S1;
         end if;
     end if;
 end process;
@@ -277,6 +300,8 @@ begin
         tr_hold160              <= tr_hold125_160;
         enableReadout125_160    <= enableReadout125;
         enableReadout160        <= enableReadout125_160;
+        artTimeout125_160       <= artTimeout;
+        artTimeout160           <= artTimeout125_160;
     end if;
 end process;
 
@@ -300,6 +325,13 @@ probe0_out(15 downto 14)    <= debug1;
 probe0_out(17 downto 16)    <= debug2;
 probe0_out(18)              <= artDataBuffed;
 probe0_out(19)              <= vmmArtReady160;
-probe0_out(127 downto 20)   <= (others => '0');
+probe0_out(21 downto 20)    <= debug3;
+probe0_out(27 downto 22)    <= std_logic_vector(art2triggerCnt);
+probe0_out(28)              <= enableReadoutSlowTr;
+probe0_out(29)              <= trigger125;
+probe0_out(30)              <= trigger160;
+probe0_out(31)              <= tr_hold160;
+probe0_out(32)              <= request2ckbc;
+probe0_out(127 downto 33)   <= (others => '0');
 
 end Behavioral;
