@@ -69,6 +69,7 @@ entity fpga_config_router is
     ------------------------------------
     -------- FPGA Config Interface -----
     latency             : out std_logic_vector(15 downto 0);
+    latency_extra       : out std_logic_vector(15 downto 0);
     tr_delay_limit      : out std_logic_vector(15 downto 0);
     ckbc_max_num        : out std_logic_vector(7 downto 0);
     daq_state           : out std_logic_vector(7 downto 0);
@@ -124,6 +125,8 @@ architecture RTL of fpga_config_router is
     --signal fpga_rst_ena         : std_logic := '0';
     ---- 20
     --signal artTimeout           : std_logic := '0';
+    ---- 21
+    --signal latency_extra_ena    : std_logic := '0';
 
     signal ena_bus              : std_logic_vector(31 downto 0) := (others => '0');
 
@@ -158,7 +161,7 @@ end bit_reverse;
     signal destIP_set_i         : std_logic_vector(31 downto 0) := (others => '0');
     signal myIP_set_i           : std_logic_vector(31 downto 0) := (others => '0');
     signal artTimeout_i         : std_logic_vector(7 downto 0)  := bit_reverse(x"18");
-
+    signal latency_extra_i      : std_logic_vector(15 downto 0) := bit_reverse(x"0058"); -- fix at 88 steps
 
 
 begin
@@ -181,6 +184,7 @@ begin
     when x"c7"  => ena_bus(14) <= sreg_ena; ena_bus(13 downto 0) <= (others => '0'); ena_bus(31 downto 15) <= (others => '0'); -- CKBC max
     when x"c8"  => ena_bus(13) <= sreg_ena; ena_bus(12 downto 0) <= (others => '0'); ena_bus(31 downto 14) <= (others => '0'); -- trigger delay
     when x"c9"  => ena_bus(20) <= sreg_ena; ena_bus(19 downto 0) <= (others => '0'); ena_bus(31 downto 21) <= (others => '0'); -- art timeout
+    when x"ca"  => ena_bus(21) <= sreg_ena; ena_bus(20 downto 0) <= (others => '0'); ena_bus(31 downto 22) <= (others => '0'); -- extra latency
     ----- xADC conf ------
     when x"a1"  => ena_bus(0)  <= sreg_ena; ena_bus(31 downto 1) <= (others => '0'); ena_bus(31 downto 1)  <= (others => '0'); -- VMM ID xADC
     when x"a2"  => ena_bus(1)  <= sreg_ena; ena_bus(0 downto 0)  <= (others => '0'); ena_bus(31 downto 2)  <= (others => '0'); -- xADC sample size
@@ -216,6 +220,7 @@ begin
             if(ena_bus(14) = '1')then ckbc_max_num_i    <= reg_value_bit & ckbc_max_num_i(7 downto 1);      else null; end if;
             if(ena_bus(13) = '1')then tr_delay_limit_i  <= reg_value_bit & tr_delay_limit_i(15 downto 1);   else null; end if;
             if(ena_bus(20) = '1')then artTimeout_i      <= reg_value_bit & artTimeout_i(7 downto 1);        else null; end if;
+            if(ena_bus(21) = '1')then latency_extra_i   <= reg_value_bit & latency_extra_i(15 downto 1);    else null; end if;
                 ----- xADC conf ------
             if(ena_bus(0) = '1')then vmm_id_xadc_i      <= reg_value_bit & vmm_id_xadc_i(15 downto 1);      else null; end if;
             if(ena_bus(1) = '1')then xadc_sample_size_i <= reg_value_bit & xadc_sample_size_i(10 downto 1); else null; end if;
@@ -249,6 +254,7 @@ end process;
     ro_state        <= bit_reverse(ro_state_reg);
     fpga_rst_state  <= bit_reverse(fpga_rst_reg);
     artTimeout      <= bit_reverse(artTimeout_i);
+    latency_extra   <= bit_reverse(latency_extra_i);
     
 
 end RTL;

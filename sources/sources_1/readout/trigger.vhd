@@ -66,7 +66,10 @@ entity trigger is
             trext           : in STD_LOGIC;
             level_0         : out STD_LOGIC;
             accept_wr       : out STD_LOGIC;
+            sel_number      : out STD_LOGIC;
+            latency_extra   : in STD_LOGIC_VECTOR(15 DOWNTO 0);
             delay_limit     : in STD_LOGIC_VECTOR(15 DOWNTO 0);
+            trigger_pf      : out STD_LOGIC;
 
             reset           : in STD_LOGIC;
 
@@ -119,13 +122,18 @@ architecture Behavioral of trigger is
     signal level_0_req          : std_logic := '0';
     signal level_0_25ns         : std_logic := '0';
     signal flag_sent            : std_logic := '0';
+    signal trigger_pf_i         : std_logic := '0';
+    signal trigger_pf_i_stage1  : std_logic := '0';         
  
     -- Special Readout Mode
     signal request2ckbc_i    : std_logic := '0';
     signal trigLatencyCnt    : integer range 0 to 255 := 0;
     signal trigLatency       : integer := 140;
+    signal trigLatencyExtra  : integer := 88; -- 88*6.25=550ns
     
-    type stateType is (waitingForTrigger, waitingForLatency, waitingForLatency_1, waitingForLatency_2, issueRequest, checkTrigger);
+    type stateType is (waitingForTrigger, waitingForLatency, waitingForSingleCKBC, changeNumberOfCKBC, 
+                       timeoutThenRequest, reqOneCKBC,  waitingForLatency_1, waitingForLatency_2, 
+                       timeoutBeforeIdle, issueRequest, checkTrigger);
     signal state            : stateType := waitingForTrigger;
     signal state_l0         : stateType := waitingForTrigger;
 
@@ -195,6 +203,8 @@ architecture Behavioral of trigger is
     attribute ASYNC_REG of flag_sent_synced     : signal is "true";
     attribute ASYNC_REG of ckbcMode_stage1      : signal is "true";
     attribute ASYNC_REG of ckbcMode_ff_synced   : signal is "true";
+    attribute ASYNC_REG of trigger_pf_i_stage1  : signal is "true";
+    attribute ASYNC_REG of trigger_pf           : signal is "true";
     
 -- Components if any
 
@@ -296,14 +306,18 @@ begin
         if(rst_trig = '1')then
             request2ckbc_i  <= '0';
             trigLatencyCnt  <= 0;
+            sel_number      <= '0';
+            trigger_pf_i    <= '0';
             state           <= waitingForTrigger;
         else      
             case state is
             
                 when waitingForTrigger =>
                     request2ckbc_i      <= '0';
+                    sel_number          <= '0';
+                    trigger_pf_i        <= '0';
+                    trigLatencyCnt      <= 0;
                     if  tren_buff_ff_synced = '1' and tr_out_i = '1' and ckbcMode_ff_synced = '1' then
-                        trigLatencyCnt      <= 0;
                         state               <= waitingForLatency;
                     end if;
                     
@@ -316,11 +330,49 @@ begin
                     
                 when issueRequest =>
                     request2ckbc_i      <= '1';
-                    state               <= waitingForTrigger;
-                    
+                    trigLatencyCnt      <= 0;
+                    state               <= waitingForSingleCKBC;
+
+                when waitingForSingleCKBC =>
+                    request2ckbc_i      <= '0';
+                    if trigLatencyCnt < trigLatencyExtra then
+                        trigLatencyCnt <= trigLatencyCnt + 1;
+                    else
+                        trigLatencyCnt <= 0;
+                        state          <= changeNumberOfCKBC;
+                    end if;
+
+                when changeNumberOfCKBC =>
+                    sel_number <= '1';
+                    state      <= timeoutThenRequest;
+
+                when timeoutThenRequest =>
+                    if trigLatencyCnt < 10 then
+                        trigLatencyCnt <= trigLatencyCnt + 1;
+                    else
+                        state          <= reqOneCKBC;
+                    end if;
+
+                when reqOneCKBC =>
+                    request2ckbc_i <= '1';
+                    trigLatencyCnt <= 0;
+                    state          <=  timeoutBeforeIdle;
+
+                when timeoutBeforeIdle =>
+                    request2ckbc_i <= '0';
+                    trigger_pf_i   <= '1';
+                    if trigLatencyCnt < 20 then
+                        trigLatencyCnt <= trigLatencyCnt + 1;
+                    else
+                        state          <= waitingForTrigger;
+                    end if;
+
+
                 when others =>
                     request2ckbc_i      <= '0';
                     trigLatencyCnt      <= 0;
+                    sel_number          <= '0';
+                    trigger_pf_i        <= '0';
                     state               <= waitingForTrigger;
 
             end case;
@@ -488,6 +540,8 @@ begin
         trint_ff_synced125      <= trint_stage_synced125;
         accept_wr_i_stage1      <= accept_wr_i;
         accept_wr_synced125     <= accept_wr_i_stage1;
+        trigger_pf_i_stage1     <= trigger_pf_i;
+        trigger_pf              <= trigger_pf_i_stage1;
     end if;
 end process;
 
@@ -561,6 +615,7 @@ tr_out              <= tr_out_i_ff_synced;
 request2ckbc        <= request2ckbc_i;
 trraw_synced125     <= trraw_synced125_i;
 trigLatency         <= to_integer(unsigned(latency));
+trigLatencyExtra    <= to_integer(unsigned(latency_extra));
 accept_wr           <= accept_wr_synced125;
 level_0             <= level_0_25ns;
 cktp_width_final    <= std_logic_vector(unsigned(cktp_pulse_width)*"1010000");  -- input x 80

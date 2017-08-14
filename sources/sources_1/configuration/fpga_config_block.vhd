@@ -92,6 +92,7 @@ entity fpga_config_block is
     fpga_rst            : out std_logic;
     fpgaPacket_rdy      : out std_logic;
     latency             : out std_logic_vector(15 downto 0);
+    latency_extra       : out std_logic_vector(15 downto 0);
     tr_delay_limit      : out std_logic_vector(15 downto 0);
     daq_on              : out std_logic;
     ext_trigger         : out std_logic;
@@ -148,6 +149,7 @@ component fpga_config_router
     ------------------------------------
     -------- FPGA Config Interface -----
     latency             : out std_logic_vector(15 downto 0);
+    latency_extra       : out std_logic_vector(15 downto 0);
     tr_delay_limit      : out std_logic_vector(15 downto 0);
     ckbc_max_num        : out std_logic_vector(7 downto 0);
     daq_state           : out std_logic_vector(7 downto 0);
@@ -486,6 +488,7 @@ fpga_conf_router_inst: fpga_config_router
     ------------------------------------
     -------- FPGA Config Interface -----
     latency             => latency,
+    latency_extra       => latency_extra,
     tr_delay_limit      => tr_delay_limit,
     ckbc_max_num        => ckbc_max_num,
     daq_state           => daq_state_reg,

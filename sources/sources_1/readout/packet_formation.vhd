@@ -76,6 +76,7 @@ entity packet_formation is
         rst_vmm         : out std_logic;
         linkHealth_bmsk : in std_logic_vector(8 downto 1);
         rst_FIFO        : out std_logic;
+        latency_done    : in std_logic;
         
         latency         : in std_logic_vector(15 downto 0);
         dbg_st_o        : out std_logic_vector(4 downto 0);
@@ -235,8 +236,11 @@ begin
                 tr_hold             <= '1'; -- Prevent new triggers
                 if(trigLatencyCnt > trigLatency and is_mmfe8 = '1')then 
                     state           <= S2;
-                elsif(trigLatencyCnt > trigLatency and is_mmfe8 = '0')then
+                -- now using external signaling
+                elsif(latency_done = '1' and is_mmfe8 = '0')then
                     state           <= captureEventID;
+--                elsif(trigLatencyCnt > trigLatency and is_mmfe8 = '0')then
+--                    state           <= captureEventID;
                 else
                     trigLatencyCnt  <= trigLatencyCnt + 1;
                 end if;
@@ -474,7 +478,8 @@ port map (
     end_packet      <= end_packet_int;
     trigVmmRo       <= triggerVmmReadout_i;
     vmmId           <= vmmId_i;
-    trigLatency     <= 50 + to_integer(unsigned(latency)); --(hard set to 400ns )--to_integer(unsigned(latency));
+    --trigLatency     <= 50 + to_integer(unsigned(latency)); --(hard set to 400ns )--to_integer(unsigned(latency));
+    trigLatency     <= to_integer(unsigned(latency)); -- latency_extra*8ns, after single CKBC, start reading
     pfBusy          <= pfBusy_i;
     globBCID_etr    <= glBCID;
     

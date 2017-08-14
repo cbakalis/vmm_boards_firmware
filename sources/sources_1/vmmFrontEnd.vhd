@@ -289,6 +289,8 @@ architecture Behavioral of vmmFrontEnd is
     constant artEnabled     : std_logic := '1';
     -- Set to '1' when the art is coming faster than the external trigger
     constant slowTrigger    : std_logic := '1';
+    -- Number of extra CKBCs
+    constant ckbc_max_num_fix   : std_logic_vector(7 downto 0) := x"01"; -- one extra CKBC
 
     -------------------------------------------------------------------
     -- Transceiver, TEMAC, UDP_ICMP block
@@ -424,6 +426,7 @@ architecture Behavioral of vmmFrontEnd is
     signal glbl_fifo_init     : std_logic := '1'; --synced@200Mhz
     signal glbl_fifo_init_s0  : std_logic := '1';
     signal glbl_fifo_init_s1  : std_logic := '1'; --synced@125Mhz
+    signal latency_extra      : std_logic_vector(15 downto 0) := x"0058";
 
     -------------------------------------------------
     -- VMM Signals                   
@@ -492,6 +495,8 @@ architecture Behavioral of vmmFrontEnd is
     signal tr_delay_limit     : std_logic_vector(15 downto 0) := x"2000";
     signal art2trigger        : std_logic_vector(5 downto 0) := (others => '0');
     signal artTimeout         : std_logic_vector(7 downto 0) := (others => '0');
+    signal sel_number_of_ckbc : std_logic := '0';
+    signal trigger_pf         : std_logic := '0';
   
     -------------------------------------------------
     -- Event Timing & Soft Reset
@@ -581,7 +586,8 @@ architecture Behavioral of vmmFrontEnd is
     signal cktk_max_num     : std_logic_vector(7 downto 0)     := x"07";
     signal ckbcMode         : std_logic := '0';
     signal CKTP_raw         : std_logic := '0';
-    signal ckbc_max_num     : std_logic_vector(7 downto 0)     := x"20";
+    signal ckbc_max_num_conf: std_logic_vector(7 downto 0)     := x"20";
+    signal ckbc_max_num_in  : std_logic_vector(7 downto 0)     := x"20";
     
     -------------------------------------------------
     -- Flow FSM signals
@@ -814,7 +820,7 @@ architecture Behavioral of vmmFrontEnd is
     -- 16. ila_top_level
     -- 17. xadc
     -- 18. AXI4_SPI
-    -- 19. VIO_IP
+    -- 19. VIO_CKBC
     -- 20. clk_gen_wrapper
     -- 21. ila_overview
     -- 22. art
@@ -958,6 +964,9 @@ architecture Behavioral of vmmFrontEnd is
           reset           : in std_logic;
           level_0         : out std_logic;
           delay_limit     : in std_logic_vector(15 downto 0);
+          sel_number      : out std_logic;
+          latency_extra   : in std_logic_vector(15 DOWNTO 0);
+          trigger_pf      : out std_logic;  
           
           event_counter   : out std_logic_vector(31 downto 0);
           tr_out          : out std_logic;
@@ -999,6 +1008,7 @@ architecture Behavioral of vmmFrontEnd is
             rst_vmm         : out std_logic;
             linkHealth_bmsk : in std_logic_vector(8 downto 1);
             rst_FIFO        : out std_logic;
+            latency_done    : in std_logic;
             
             latency         : in std_logic_vector(15 downto 0);
             dbg_st_o        : out std_logic_vector(4 downto 0);
@@ -1207,6 +1217,7 @@ architecture Behavioral of vmmFrontEnd is
         ------------------------------------
         -------- FPGA Config Interface -----
         latency             : out std_logic_vector(15 downto 0);
+        latency_extra       : out std_logic_vector(15 downto 0);
         serial_number       : out std_logic_vector(31 downto 0);
         tr_delay_limit      : out std_logic_vector(15 downto 0);
         daq_on              : out std_logic;
@@ -1385,11 +1396,10 @@ architecture Behavioral of vmmFrontEnd is
     );
     end component;
     -- 19
-    COMPONENT vio_ip
+    COMPONENT vio_ckbc
       PORT (
         clk        : IN std_logic;
-        probe_out0 : OUT std_logic_VECTOR(31 DOWNTO 0);
-        probe_out1 : OUT std_logic_VECTOR(47 DOWNTO 0)
+        probe_out0 : OUT std_logic_VECTOR(7 DOWNTO 0)
       );
     END COMPONENT;
     -- 20
@@ -1706,6 +1716,7 @@ udp_din_conf_block: udp_data_in_handler
         ------------------------------------
         -------- FPGA Config Interface -----
         latency             => latency_conf,
+        latency_extra       => latency_extra,
         tr_delay_limit      => tr_delay_limit,
         serial_number       => serial_number,
         daq_on              => daq_on,
@@ -1731,7 +1742,7 @@ udp_din_conf_block: udp_data_in_handler
         cktp_skew           => cktp_skew,
         cktp_period         => cktp_period,
         cktp_width          => cktp_pulse_width,
-        ckbc_max_num        => ckbc_max_num,
+        ckbc_max_num        => ckbc_max_num_conf,
         ------------------------------------
         ------ VMM Config Interface --------
         vmm_bitmask         => vmm_bitmask_8VMM,
@@ -1872,6 +1883,9 @@ trigger_instance: trigger
         trext           => EXT_TRIGGER_i,       -- External trigger is to be driven to this port
         level_0         => level_0,              -- Level-0 accept signal
         accept_wr       => accept_wr,
+        sel_number      => sel_number_of_ckbc,
+        latency_extra   => latency_extra,
+        trigger_pf      => trigger_pf,
 
         reset           => tr_reset,
 
@@ -1940,8 +1954,9 @@ packet_formation_instance: packet_formation
         rst_vmm         => rst_vmm,
         linkHealth_bmsk => linkHealth_bmsk,
         rst_FIFO        => pf_rst_FIFO,
+        latency_done    => trigger_pf,
 
-        latency         => latency_conf,
+        latency         => latency_extra, --latency_conf (original latency)
         dbg_st_o        => pf_dbg_st,
         trraw_synced125 => trraw_synced125_i,
         
@@ -2074,7 +2089,7 @@ ckbc_cktp_generator: clk_gen_wrapper
         cktp_period         => cktp_period,
         cktp_skew           => cktp_skew(4 downto 0),
         ckbc_freq           => ckbc_freq(5 downto 0),
-        ckbc_max_num        => ckbc_max_num,
+        ckbc_max_num        => ckbc_max_num_in,
         ------------------------------------
         ---------- VMM Interface -----------
         CKTP                => CKTP_glbl,
@@ -2313,11 +2328,22 @@ rstn_obuf:  OBUF  port map  (O => phy_rstn_out, I => phy_rstn);
 -------------------------------------------------------------------
 --                        Processes                              --
 -------------------------------------------------------------------
-    -- 1. synced_to_flowFSM
-    -- 2. sel_cs
-    -- 3. sync_ctf_rst
-    -- 4. flow_fsm
+    -- 1. select_number_ckbc
+    -- 2. synced_to_flowFSM
+    -- 3. sel_cs
+    -- 4. sync_ctf_rst
+    -- 5. flow_fsm
 -------------------------------------------------------------------
+select_number_ckbc: process(sel_number_of_ckbc, ckbc_max_num_conf) --ckbc_max_num_fix is constant...
+begin
+    case sel_number_of_ckbc is
+    when '0'    => ckbc_max_num_in <= ckbc_max_num_conf;
+    when '1'    => ckbc_max_num_in <= ckbc_max_num_fix;
+    when others => ckbc_max_num_in <= ckbc_max_num_conf;
+    end case;
+end process;
+
+
 sync_fifo_init: process(userclk2)
 begin
     if(rising_edge(userclk2))then
@@ -2685,11 +2711,10 @@ end process;
 --        probe0  => overviewProbe
 --    );
     
---VIO_DEFAULT_IP: vio_ip
+--VIO_CKBC_NUM: vio_ckbc
 --      PORT MAP (
---        clk         => clk_50,
---        probe_out0  => default_IP,
---        probe_out1  => default_MAC
+--        clk         => clk_160,
+--        probe_out0  => ckbc_max_num_fix
 --      );
     
     overviewProbe(3 downto 0)          <= is_state;

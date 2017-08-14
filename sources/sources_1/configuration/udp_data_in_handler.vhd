@@ -68,6 +68,7 @@ entity udp_data_in_handler is
     ------------------------------------
     -------- FPGA Config Interface -----
     latency             : out std_logic_vector(15 downto 0);
+    latency_extra       : out std_logic_vector(15 downto 0);
     serial_number       : out std_logic_vector(31 downto 0);
     tr_delay_limit      : out std_logic_vector(15 downto 0);
     daq_on              : out std_logic;
@@ -157,6 +158,7 @@ architecture RTL of udp_data_in_handler is
         fpga_rst            : out std_logic;
         fpgaPacket_rdy      : out std_logic;
         latency             : out std_logic_vector(15 downto 0);
+        latency_extra       : out std_logic_vector(15 downto 0);
         tr_delay_limit      : out std_logic_vector(15 downto 0);
         daq_on              : out std_logic;
         ext_trigger         : out std_logic;
@@ -525,6 +527,7 @@ fpga_config_logic: fpga_config_block
         fpga_rst            => fpga_rst_i,
         fpgaPacket_rdy      => fpgaPacket_rdy,
         latency             => latency,
+        latency_extra       => latency_extra,
         tr_delay_limit      => tr_delay_limit,
         daq_on              => daq_on,
         ext_trigger         => ext_trigger,
