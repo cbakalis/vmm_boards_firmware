@@ -229,9 +229,6 @@ end component;
 
 begin
 
--- if 8b10b encoding is used, then the TX modules should be generated
-UseTX: if elinkEncoding = "01" generate
-
 testing_instance: elink_daq_tester
 port map(
     -----------------------------
@@ -290,11 +287,6 @@ port map(
     elink8bit       => open
     );
 
-end generate UseTX;
-
--- UNCOMMENT ME IF WANT TO USE RX @ 320Mbps
---UseRX: if DataRate /= 320 generate
-
 elink_rx_instance: Elink2FIFO
 generic map( InputDataRate  => DataRate, -- 80 / 160 / 320 MHz
              elinkEncoding  => elinkEncoding) -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding
@@ -320,8 +312,6 @@ port map(
     efifoDout   => dout_elink2fifo
     ------
     );
-    
---end generate UseRX;
 
 -- use TTC signal recognition module
 UseTTC: if elinkEncoding = "00" generate

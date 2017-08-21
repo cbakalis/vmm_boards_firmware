@@ -2004,7 +2004,7 @@ vmm_oddr_inst: vmm_oddr_wrapper
 -- DAQ path E-link
 DAQ_ELINK: elink_wrapper
     generic map(DataRate      => 80,
-                elinkEncoding => "01")
+                elinkEncoding => "01") --8b/10b encoding
     port map(
         ---------------------------------
         ----- General/VIO Interface -----
@@ -2031,8 +2031,8 @@ DAQ_ELINK: elink_wrapper
         elink_rx        => elink_DAQ_rx,
         ---------------------------------
         --------- PF Interface ----------
-        din_daq         => daq_data_elink_i,    -- to DAQelinkMUX
-        wr_en_daq       => daq_wr_en_elink_i,   -- to DAQelinkMUX
+        din_daq         => daq_data_elink_i,    -- from DAQelinkMUX
+        wr_en_daq       => daq_wr_en_elink_i,   -- from DAQelinkMUX
         din_last        => end_packet_daq_int,
         elink_busy      => elink_busy
 
