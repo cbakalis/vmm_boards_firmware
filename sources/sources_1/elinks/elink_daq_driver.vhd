@@ -1,27 +1,34 @@
-----------------------------------------------------------------------------------
--- Company: NTU Athens - BNL
+-- Company: NTUA - BNL
 -- Engineer: Christos Bakalis (christos.bakalis@cern.ch)
--- 
--- Create Date: 11/16/2016 03:11:54 PM
--- Design Name: ELINK_TX
--- Module Name: elink_daq_driver - Behavioral
--- Project Name: 
--- Target Devices: Artix7 xc7a200t-2fbg484 and xc7a200t-3fbg484 
--- Tool Versions: Vivado 2016.2
--- Description: 
--- 
--- Dependencies: 
--- 
--- Revision:
--- Revision 0.01 - File Created
--- Changelog:
--- 29.11.2016 Changed the appending of the SOP, MOP, EOP flag with respect to the
--- data, to comply with the updated FIFO2Elink module. The data appended with the
--- SOP/EOP flags are omitted in the rx-side of the E-LINK. (Christos Bakalis)
--- 03.12.2016 Removed the ILA of the component and increased the write limit
--- to 400 bytes. Altered the FIFO to operate in two clock domains. Minor changes 
--- in state order and naming. (Christos Bakalis)
 --
+-- Copyright Notice/Copying Permission:
+--    Copyright 2017 Christos Bakalis
+--
+--    This file is part of NTUA-BNL_VMM_firmware.
+--
+--    NTUA-BNL_VMM_firmware is free software: you can redistribute it and/or modify
+--    it under the terms of the GNU General Public License as published by
+--    the Free Software Foundation, either version 3 of the License, or
+--    (at your option) any later version.
+--
+--    NTUA-BNL_VMM_firmware is distributed in the hope that it will be useful,
+--    but WITHOUT ANY WARRANTY; without even the implied warranty of
+--    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--    GNU General Public License for more details.
+--
+--    You should have received a copy of the GNU General Public License
+--    along with NTUA-BNL_VMM_firmware.  If not, see <http://www.gnu.org/licenses/>.
+--  
+-- Create Date: 18.07.2017 16:32:39
+-- Design Name: 
+-- Module Name: elink_daq_driver - RTL
+-- Project Name: 
+-- Target Devices: 
+-- Target Devices: Artix7 xc7a200t-2fbg484 & xc7a200t-3fbg484 
+-- Tool Versions: Vivado 2017.2 
+-- 
+-- Changelog:
+-- 
 ----------------------------------------------------------------------------------
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
@@ -31,233 +38,201 @@ entity elink_daq_driver is
     Port(
         ---------------------------
         ---- general interface ---- 
-        clk_in      : in std_logic;
-        wr_clk      : in std_logic;
-        fifo_flush  : in std_logic;
-        rst         : in std_logic;
-        driver_ena  : in std_logic;
+        clk_in      : in  std_logic;
+        fifo_flush  : in  std_logic;
+        driver_ena  : in  std_logic;
         ---------------------------
         ------- pf interface ------
-        din_daq     : in std_logic_vector(63 downto 0);
-        wr_en_daq   : in std_logic;
+        din_daq     : in  std_logic_vector(63 downto 0);
+        wr_en_daq   : in  std_logic;
+        last        : in  std_logic;
+        busy        : out std_logic;
         ---------------------------
         ------ elink inteface -----
-        empty_elink : in std_logic;
+        empty_elink : in  std_logic;
         wr_en_elink : out std_logic;
         dout_elink  : out std_logic_vector(17 downto 0)
-        );
+    );
 end elink_daq_driver;
 
-architecture Behavioral of elink_daq_driver is
-
-COMPONENT ila_daq_elink_drv
-PORT(
-	clk    : IN STD_LOGIC;
-    probe0 : IN STD_LOGIC_VECTOR(139 DOWNTO 0)
-    );
-END COMPONENT;
+architecture RTL of elink_daq_driver is
 
 COMPONENT DAQelinkFIFO
-    PORT(
-        rst                 : IN STD_LOGIC;
-        wr_clk              : IN STD_LOGIC;
-        rd_clk              : IN STD_LOGIC;
-        din                 : IN STD_LOGIC_VECTOR(63 DOWNTO 0);
-        wr_en               : IN STD_LOGIC;
-        rd_en               : IN STD_LOGIC;
-        dout                : OUT STD_LOGIC_VECTOR(15 DOWNTO 0);
-        prog_empty_thresh   : IN STD_LOGIC_VECTOR(11 DOWNTO 0);
-        full                : OUT STD_LOGIC;
-        empty               : OUT STD_LOGIC;
-        prog_empty          : OUT STD_LOGIC
-    );
+  PORT (
+    clk     : IN  STD_LOGIC;
+    srst    : IN  STD_LOGIC;
+    din     : IN  STD_LOGIC_VECTOR(63 DOWNTO 0);
+    wr_en   : IN  STD_LOGIC;
+    rd_en   : IN  STD_LOGIC;
+    dout    : OUT STD_LOGIC_VECTOR(15 DOWNTO 0);
+    full    : OUT STD_LOGIC;
+    empty   : OUT STD_LOGIC
+  );
 END COMPONENT;
 
-    signal rd_en_daq        : std_logic := '0';
-    signal dout_daq         : std_logic_vector(15 downto 0) := (others => '0');
-    signal full_daq         : std_logic := '0';
-    signal empty_daq        : std_logic := '0';
-    signal flag             : std_logic_vector(1 downto 0) := (others => '0');
-    signal check_state      : std_logic_vector(3 downto 0) := (others => '0');
-    signal cnt_word         : integer := 0;
-    signal cnt_sig          : std_logic_vector(7 downto 0) := (others => '0');
-    signal prog_empty_sig   : std_logic_vector(11 downto 0) := (others => '0');
-    signal limit_64bitWords : integer := 50; -- write 50x64-bit words first, then start reading the FIFO
-    signal write_limit      : integer := 0;
-    signal wait_Cnt         : integer := 0;
-    signal wr_en_elink_i    : std_logic := '0';
-    signal dout_elink_i     : std_logic_vector(17 downto 0) := (others => '0'); 
+    signal rd_en        : std_logic := '0';
+    signal dout_fifo    : std_logic_vector(15 downto 0) := (others => '0');
+    signal data_out     : std_logic_vector(15 downto 0) := (others => '0');
+    signal fifo_full    : std_logic := '0';
+    signal fifo_empty   : std_logic := '0';
+    signal trailer      : std_logic := '0';
+    signal wait_cnt     : unsigned(1 downto 0) := (others => '0');
 
+    signal flag         : std_logic_vector(1 downto 0) := (others => '0');
     constant SOP        : std_logic_vector(1 downto 0) := "10";
     constant MOP        : std_logic_vector(1 downto 0) := "00";
     constant EOP        : std_logic_vector(1 downto 0) := "01";
 
-    type stateType is (IDLE, DELAY_CHECK_DRV_FIFO, CHECK_DRV_FIFO, WRITE_SOP, READ_HIGH, READ_LOW, CHECK_CNT, DELAY_WRITE, WRITE_HIGH, WRITE_LOW); 
-    signal state : stateType := IDLE;
-
-    attribute FSM_ENCODING          : string;
-    attribute FSM_ENCODING of state : signal is "ONE_HOT";
-    
-    signal din_daq_ila      : std_logic_vector(63 downto 0) := (others => '0');
-    signal wr_en_daq_ila    : std_logic := '0';
-    signal empty_elink_ila  : std_logic := '0';  
-    signal driver_ena_ila   : std_logic := '0'; 
-    
---    signal probe_ila : std_logic_vector(139 downto 0) := (others => '0');
-    
-    attribute mark_debug    : string;
-        
---    attribute mark_debug of rd_en_daq       : signal is "true";
---    attribute mark_debug of dout_daq        : signal is "true";
---    attribute mark_debug of full_daq        : signal is "true";
---    attribute mark_debug of empty_daq       : signal is "true";
---    attribute mark_debug of flag            : signal is "true";
---    attribute mark_debug of check_state     : signal is "true";
---    attribute mark_debug of cnt_sig         : signal is "true";
---    attribute mark_debug of prog_empty_sig  : signal is "true";
---    attribute mark_debug of wr_en_elink_i   : signal is "true";
---    attribute mark_debug of dout_elink_i    : signal is "true";
---    attribute mark_debug of din_daq_ila     : signal is "true";
---    attribute mark_debug of wr_en_daq_ila   : signal is "true";
---    attribute mark_debug of empty_elink_ila : signal is "true";
---    attribute mark_debug of driver_ena_ila  : signal is "true";
+    type stateType is (ST_IDLE, ST_SOP_L, ST_RD_FIFO, ST_WAIT, ST_WR_LOW, ST_TRAILER, ST_EOP_0, ST_EOP_1, ST_EOP_2, ST_EOP_3); 
+    signal state : stateType := ST_IDLE;
+    attribute FSM_ENCODING              : string;
+    attribute FSM_ENCODING of state     : signal is "ONE_HOT";
 
 begin
 
-driverFSM: process(clk_in)
+FSM_DRV_proc: process(clk_in)
 begin
     if(rising_edge(clk_in))then
-        if(rst = '1')then
-            rd_en_daq       <= '0';
-            wr_en_elink_i   <= '0';
-            cnt_word        <= 0;
-            wait_Cnt        <= 0;
-            flag            <= "00";
-            check_state     <= (others => '0');
-            state           <= IDLE;
+        if(driver_ena = '0')then
+            flag        <= SOP;
+            rd_en       <= '0';
+            wait_cnt    <= (others => '0');
+            trailer     <= '0';
+            wr_en_elink <= '0';
+            busy        <= '0';
+            state       <= ST_IDLE;
         else
             case state is
-
-            when IDLE => -- wait for elink fifo to be emptied
-                check_state <= "0001";
+    
+            -- wait for 'last' signal from PF to start sending data to the elinkFIFO
+            when ST_IDLE =>
                 flag        <= SOP;
-
-                if(empty_elink = '1' and driver_ena = '1')then
-                    state <= DELAY_CHECK_DRV_FIFO;
+                rd_en       <= '0';
+                wait_cnt    <= (others => '0');
+                trailer     <= '0';
+                wr_en_elink <= '0';
+                busy        <= '0';
+    
+                if(last = '1')then
+                    wr_en_elink <= '1';
+                    state       <= ST_SOP_L;
                 else
-                    state <= IDLE;
+                    wr_en_elink <= '0';
+                    state       <= ST_IDLE;
                 end if;
-                
-            when DELAY_CHECK_DRV_FIFO => -- hold delay to allow FIFO2Elink to send comma characters
-                check_state <= "0010";
-                
-                if(wait_Cnt < 1_000)then
-                    wait_Cnt    <= wait_Cnt + 1;
-                    state       <= DELAY_CHECK_DRV_FIFO;
+    
+            -- write the start of packet, assert BUSY
+            when ST_SOP_L =>
+                busy        <= '1';
+                wr_en_elink <= '0';
+                state       <= ST_RD_FIFO;
+    
+            -- pass a fifo word to the bus if it is not empty
+            when ST_RD_FIFO =>
+                flag <= MOP;
+    
+                if(fifo_empty = '0')then
+                    rd_en   <= '1';
+                    state   <= ST_WAIT;
                 else
-                    wait_Cnt    <= 0;
-                    state       <= CHECK_DRV_FIFO;
+                    rd_en   <= '0';
+                    trailer <= '1';
+                    state   <= ST_TRAILER;
                 end if;
-
-            when CHECK_DRV_FIFO =>
-                check_state <= "0011";
-
-                if(empty_daq = '0')then -- if driverFIFO has data, proceed to transmission
-                    state   <= WRITE_SOP;
+    
+            -- wait 3 cycles (embedded registers and ensure data integrity)
+            when ST_WAIT =>
+                rd_en <= '0';
+    
+                if(wait_cnt = "11")then
+                    wr_en_elink <= '1';
+                    wait_cnt    <= (others => '0');
+                    state       <= ST_WR_LOW;
                 else
-                    state   <= CHECK_DRV_FIFO; -- driverFIFO has no data, wait for data
+                    wr_en_elink <= '0';
+                    wait_cnt    <= wait_cnt + 1;
+                    state       <= ST_WAIT;
                 end if;
-                
-            when WRITE_SOP =>   -- write the SOP packet
-                check_state     <= "0100";
-                wr_en_elink_i   <= '1';
-                state           <= READ_HIGH;
-
-            when READ_HIGH =>  -- pass one 16-bit word to the bus
-                check_state     <= "0101";
-                wr_en_elink_i   <= '0';
-                rd_en_daq       <= '1';
-                cnt_word        <= cnt_word + 1;
-                state           <= READ_LOW;
-
-            when READ_LOW =>
-                check_state <= "0110";
-                rd_en_daq   <= '0';
-                state       <= CHECK_CNT;
-
-            when CHECK_CNT => -- append the correct elink flag to the 16-bit word
-                check_state <= "0111";
-                
-                if(cnt_word <= write_limit)then
-                    flag    <= MOP;
-                    state   <= DELAY_WRITE;
-                elsif(cnt_word > write_limit)then
-                    flag    <= EOP;
-                    state   <= DELAY_WRITE;
+    
+            -- wait 3 cycles and then check the fifo
+            when ST_WR_LOW =>
+                wr_en_elink <= '0';
+    
+                if(wait_cnt = "11")then
+                    wait_cnt    <= (others => '0');
+                    state       <= ST_RD_FIFO;
                 else
-                    flag    <= "00";
-                    state   <= CHECK_CNT;
+                    wait_cnt    <= wait_cnt + 1;
+                    state       <= ST_WR_LOW;
                 end if;
-
-            when DELAY_WRITE => -- delay to ensure correct passing of data
-                check_state <= "1000";
-                if(wait_Cnt < 3)then
-                    wait_Cnt    <= wait_Cnt + 1;
-                    state       <= DELAY_WRITE;
+    
+            -- done. add 4 times 0xFF (32 bits so stay here twice)
+            when ST_TRAILER =>
+                wr_en_elink <= '1';
+    
+                if(wait_cnt = "01")then
+                    wait_cnt    <= (others => '0');
+                    state       <= ST_EOP_0;
                 else
-                    wait_Cnt    <= 0;
-                    state       <= WRITE_HIGH;
+                    wait_cnt    <= wait_cnt + 1;
+                    state       <= ST_TRAILER;
                 end if;
-
-            when WRITE_HIGH => -- write the 18-bit word to the elinkFIFO (flag & daqDATA)
-                check_state     <= "1001";
-                wr_en_elink_i   <= '1';
-                state           <= WRITE_LOW;
-
-            when WRITE_LOW => -- if the maximum amount of words have been read/written, 
-                              -- the DAQelinkFIFO is probably now empty. Go to IDLE and wait for
-                              -- more data. Otherwise keep passing new 16-bit words to the ELINK
-                check_state     <= "1010";
-                wr_en_elink_i   <= '0';
-
-                if(cnt_word <= write_limit)then
-                    state       <= READ_HIGH; -- keep reading the fifo
+    
+            -- ground wr_en and add EOP. go to idle after EOP and elink is done.
+            when ST_EOP_0 =>
+                wr_en_elink <= '0';
+                state       <= ST_EOP_1;
+            when ST_EOP_1 =>
+                flag        <= EOP;
+                state       <= ST_EOP_2;
+            when ST_EOP_2 =>
+                wr_en_elink <= '1';
+                state       <= ST_EOP_3;
+            when ST_EOP_3 =>
+                wr_en_elink <= '0';
+                if(empty_elink = '1')then -- wait here...PF SHOULD FLUSH THE FIFOS ON 'BUSY' TRANSITION FROM 1 TO 0
+                    state   <= ST_IDLE;
                 else
-                    cnt_word    <= 0;         -- go to IDLE and wait for more DAQ data to come
-                    state       <= IDLE;
+                    state   <= ST_EOP_3;
                 end if;
-
-            when others => state <= IDLE;
+    
+            when others =>
+                flag        <= SOP;
+                rd_en       <= '0';
+                wait_cnt    <= (others => '0');
+                trailer     <= '0';
+                wr_en_elink <= '0';
+                busy        <= '0';
+                state       <= ST_IDLE;
+    
             end case;
         end if;
     end if;
 end process;
 
-driverFIFO: DAQelinkFIFO
+driverFIFO : DAQelinkFIFO
   PORT MAP (
-    rst                 => fifo_flush,
-    wr_clk              => wr_clk,
-    rd_clk              => clk_in,
-    din                 => din_daq,
-    wr_en               => wr_en_daq,
-    rd_en               => rd_en_daq,
-    dout                => dout_daq,
-    prog_empty_thresh   => prog_empty_sig,
-    full                => full_daq,
-    prog_empty          => empty_daq,
-    empty               => open    
+    clk     => clk_in,
+    srst    => fifo_flush,
+    din     => din_daq,
+    wr_en   => wr_en_daq,
+    rd_en   => rd_en,
+    dout    => dout_fifo,
+    full    => fifo_full,
+    empty   => fifo_empty
   );
 
-  write_limit       <= limit_64bitWords*4;
-  dout_elink_i      <= flag & dout_daq;
-  cnt_sig           <= std_logic_vector(to_unsigned(cnt_word, 8));
-  prog_empty_sig    <= std_logic_vector(to_unsigned(write_limit-4, 12));
-  wr_en_daq_ila     <= wr_en_daq;
-  empty_elink_ila   <= empty_elink;
-  driver_ena_ila    <= driver_ena;
-  din_daq_ila       <= din_daq;
-  
-  dout_elink        <= dout_elink_i;
-  wr_en_elink       <= wr_en_elink_i;
-    
-end Behavioral;
+  dout_elink <= flag & data_out;
+
+sel_dout: process(flag, trailer, dout_fifo)
+begin
+    case flag is
+    when SOP    => data_out <= (others => '0');
+    when MOP    => if(trailer = '1')then data_out <= x"FFFF"; else data_out <= dout_fifo; end if;
+    when EOP    => data_out <= (others => '0');
+    when others => data_out <= (others => '0');
+    end case;
+end process;
+
+
+end RTL;

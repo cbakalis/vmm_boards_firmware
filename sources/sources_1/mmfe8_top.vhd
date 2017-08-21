@@ -538,12 +538,15 @@ architecture Behavioral of mmfe8_top is
     signal elink_DAQ_tx         : std_logic := '0';
     signal elink_DAQ_rx         : std_logic := '0';
     signal elink_TTC_rx         : std_logic := '0';
+    signal flush_pf             : std_logic := '0';
+    signal rst_tx_final         : std_logic := '0';
     ------
     signal tap_increase         : std_logic := '0';
     signal tap_decrease         : std_logic := '0';
     signal tap_rst              : std_logic := '0';
     signal ctrl_rst             : std_logic := '0';
     signal rdy_all              : std_logic := '0';
+    signal elink_busy           : std_logic := '0';
     signal cnt_delay            : std_logic_vector(4 downto 0) := (others => '0');
     signal sel_tx               : std_logic := '0';
 
@@ -890,6 +893,10 @@ architecture Behavioral of mmfe8_top is
             dataout     : out std_logic_vector(63 downto 0);
             wrenable    : out std_logic;
             end_packet  : out std_logic;
+            
+            flush_elink : out std_logic;
+            elink_busy  : in  std_logic;
+            elink_daq   : in  std_logic;
             
             tr_hold     : out std_logic;
             reset       : in std_logic;
@@ -1344,6 +1351,8 @@ architecture Behavioral of mmfe8_top is
         ---------------------------------
         --------- PF Interface ----------
         din_daq         : in  std_logic_vector(63 downto 0); -- data packets from packet formation
+        din_last        : in  std_logic;                     -- last packet
+        elink_busy      : out std_logic;                     -- elink is sending DAQ data
         wr_en_daq       : in  std_logic                      -- write enable from packet formation
         );
     end component;
@@ -1801,6 +1810,10 @@ packet_formation_instance: packet_formation
         wrenable        => daq_wr_en_pf_i,
         end_packet      => end_packet_daq_int,
         
+        flush_elink     => flush_pf,
+        elink_busy      => elink_busy,
+        elink_daq       => daq_enable,
+        
         tr_hold         => tr_hold,
         reset           => pf_reset,
         rst_vmm         => rst_vmm,
@@ -2000,7 +2013,7 @@ DAQ_ELINK: elink_wrapper
         daq_ena         => daq_enable,      -- from VIO
         loopback_ena    => loopback_enable, -- from VIO
         glbl_rst        => rst_elink_glbl,  -- from VIO
-        rst_tx          => rst_elink_tx,    -- from VIO
+        rst_tx          => rst_tx_final,    -- from VIO and PF
         rst_rx          => rst_elink_rx,    -- from VIO
         swap_tx         => swap_tx,         -- from VIO
         swap_rx         => swap_rx,         -- from VIO
@@ -2019,8 +2032,11 @@ DAQ_ELINK: elink_wrapper
         ---------------------------------
         --------- PF Interface ----------
         din_daq         => daq_data_elink_i,    -- to DAQelinkMUX
-        wr_en_daq       => daq_wr_en_elink_i    -- to DAQelinkMUX
-        );
+        wr_en_daq       => daq_wr_en_elink_i,   -- to DAQelinkMUX
+        din_last        => end_packet_daq_int,
+        elink_busy      => elink_busy
+
+    );
 
 -- TTC path e-link
 --TTC_ELINK: elink_wrapper
@@ -2562,6 +2578,7 @@ end process;
     daq_is_on               <= '1' when state = DAQ else '0';
     inhibit_conf            <= '0' when (state = IDLE) else '1';
     ckbc_enable             <= '1';
+    rst_tx_final            <= rst_elink_rx or flush_pf;
     
     pf_newCycle             <= tr_out_i;
     

@@ -66,6 +66,8 @@ port(
     ---------------------------------
     --------- PF Interface ----------
     din_daq         : in  std_logic_vector(63 downto 0); -- data packets from packet formation
+    din_last        : in  std_logic;                     -- last packet
+    elink_busy      : out std_logic;                     -- elink is sending DAQ data
     wr_en_daq       : in  std_logic                      -- write enable from packet formation
     );
 end elink_wrapper;
@@ -92,14 +94,14 @@ component elink_daq_driver
     ---------------------------
     ---- general interface ---- 
     clk_in      : in  std_logic;
-    wr_clk      : in  std_logic;
     fifo_flush  : in  std_logic;
-    rst         : in  std_logic;
     driver_ena  : in  std_logic;
     ---------------------------
     ------- pf interface ------
     din_daq     : in  std_logic_vector(63 downto 0);
     wr_en_daq   : in  std_logic;
+    last        : in  std_logic;
+    busy        : out std_logic;
     ---------------------------
     ------ elink inteface -----
     empty_elink : in  std_logic;
@@ -234,7 +236,7 @@ testing_instance: elink_daq_tester
 port map(
     -----------------------------
     ---- general interface ------
-    clk_in          => clk_80, -- must be the same with efifoWclk of FIFO2ELINK
+    clk_in          => user_clock, -- must be the same with efifoWclk of FIFO2ELINK
     rst             => rst_i_tx_s1,
     tester_ena      => tester_ena_s1,
     ------------------------------
@@ -248,22 +250,22 @@ DAQ2ELINK_instance: elink_daq_driver
 port map(
     ---------------------------
     ---- general interface ---- 
-    clk_in      => clk_80,      -- must be the same with efifoWclk of FIFO2ELINK
-    wr_clk      => user_clock,  -- must be the same with clocking of packet formation
-    rst         => rst_i_tx_s1,
+    clk_in      => user_clock,      -- must be the same with efifoWclk of FIFO2ELINK and packet_formation clk
     fifo_flush  => flush_tx,
     driver_ena  => driver_ena_s1,
     ---------------------------
     ------- pf interface ------
     din_daq     => din_daq,
     wr_en_daq   => wr_en_daq,
+    last        => din_last,
+    busy        => elink_busy,
     ---------------------------
     ------ elink inteface -----
     empty_elink => empty_elink_tx,
     wr_en_elink => wr_en_elink_daq,
     dout_elink  => data_elink_daq
     );
-
+    
 elink_tx_instance: FIFO2Elink
 generic map(OutputDataRate => DataRate, -- 80 / 160 / 320 MHz
             elinkEncoding  => elinkEncoding) -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
@@ -280,7 +282,7 @@ port map(
     efifoWe         => wr_en_elink_tx,
     efifoPfull      => full_elink_tx,
     efifoEmpty      => empty_elink_tx,
-    efifoWclk       => clk_80, -- must be the same with clk_in of tester and driver
+    efifoWclk       => user_clock, -- must be the same with clk_in of tester and driver
     ------
     DATA1bitOUT     => elink_tx_i,
     elink2bit       => open,

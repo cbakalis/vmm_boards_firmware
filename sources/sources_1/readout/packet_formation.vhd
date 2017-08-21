@@ -44,6 +44,10 @@ entity packet_formation is
         wrenable    : out std_logic;
         end_packet  : out std_logic;
         
+        flush_elink : out std_logic;
+        elink_busy  : in  std_logic;
+        elink_daq   : in  std_logic;
+        
         tr_hold     : out std_logic;
         reset       : in std_logic;
         rst_vmm     : out std_logic;
@@ -90,7 +94,7 @@ architecture Behavioral of packet_formation is
     attribute ASYNC_REG of resetting_i  : signal is "TRUE";
     attribute ASYNC_REG of resetting_s  : signal is "TRUE";
 
-    type stateType is (waitingForNewCycle, increaseCounter, waitForLatency, S2, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
+    type stateType is (waitingForNewCycle, increaseCounter, waitForLatency, S2, flushElinks, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
                        triggerVmmReadout, waitForData, resetVMMs, resetDone, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, isUDPDone,
                        isTriggerOff, eventDone);
     signal state            : stateType;
@@ -149,6 +153,7 @@ begin
             daqFIFO_wr_en           <= '0';
             packLen_cnt             <= x"000";
             wait_Cnt                <= 0;
+            flush_elink             <= '0';
             triggerVmmReadout_i     <= '0';
             end_packet_int          <= '0';
             selectDataInput         <= '0';
@@ -189,8 +194,28 @@ begin
                 selectDataInput <= '0';
                 packLen_cnt     <= x"000";              -- Reset length count
                 vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
-                state           <= captureEventID;
-
+                if(elink_daq = '1' and elink_busy = '0')then -- elink DAQ is on, flush the elink tx FIFOs
+                    flush_elink     <= '1';
+                    state           <= flushElinks;
+                elsif(elink_daq = '1' and elink_busy = '1')then -- stay here until elink has sent all data
+                    flush_elink     <= '0';
+                    state           <= S2;
+                else
+                    flush_elink     <= '0';
+                     state          <= captureEventID;
+                end if;
+            
+            -- wait until Elink FIFOs are flushed    
+            when flushElinks =>
+                flush_elink     <= '0';
+                    if wait_Cnt < 70 then
+                        wait_Cnt    <= wait_Cnt + 1;
+                        state       <= flushElinks;
+                    else
+                        wait_Cnt    <= 0;
+                        state       <= captureEventID;
+                    end if;
+                    
             when captureEventID =>      -- Form Header
                 debug_state             <= "00011";
                 packLen_cnt             <= x"000";
