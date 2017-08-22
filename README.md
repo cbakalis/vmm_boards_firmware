@@ -28,6 +28,14 @@ The deployment of the project can be done in a single step. Add the name of the 
 
 The script will take care of cleaning up and build the project. After that Vivado will open the freshly deployed project ready for new firmware adventures!
 
+Another approach would be to open up Vivado's .tcl console, and source the .tcl script. Before doing that however, it is requred to enter the following commnad in the .tcl console:
+
+```
+set argv [list <board>]
+```
+
+And because this is the VMM2 version of the firmware, the 'board' field of the above command can only be: mmfe8_vmm2 .
+
 
 ## Useful links
 
@@ -38,12 +46,11 @@ The script will take care of cleaning up and build the project. After that Vivad
 
 Questions, comments, suggestions, or help?
 
-
-**Paris Moschovakos**: <paris.moschovakos@cern.ch>
+**Christos Bakalis**: <christos.bakalis@cern.ch>
 
 **Panagiotis Gkountoumis**: <panagiotis.gkountoumis@cern.ch>
 
-**Christos Bakalis**: <christos.bakalis@cern.ch>
+**Paris Moschovakos**: <paris.moschovakos@cern.ch>
 
 [1]: https://gitlab.cern.ch/NSWelectronics/vmm_readout_software
 [2]: https://twiki.cern.ch/twiki/bin/viewauth/Atlas/NSWelectronics
