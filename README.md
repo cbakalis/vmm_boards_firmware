@@ -38,12 +38,11 @@ The script will take care of cleaning up and build the project. After that Vivad
 
 Questions, comments, suggestions, or help?
 
-
-**Paris Moschovakos**: <paris.moschovakos@cern.ch>
+**Christos Bakalis**: <christos.bakalis@cern.ch>
 
 **Panagiotis Gkountoumis**: <panagiotis.gkountoumis@cern.ch>
 
-**Christos Bakalis**: <christos.bakalis@cern.ch>
+**Paris Moschovakos**: <paris.moschovakos@cern.ch>
 
 [1]: https://gitlab.cern.ch/NSWelectronics/vmm_readout_software
 [2]: https://twiki.cern.ch/twiki/bin/viewauth/Atlas/NSWelectronics
