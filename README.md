@@ -28,6 +28,13 @@ The deployment of the project can be done in a single step. Add the name of the 
 
 The script will take care of cleaning up and build the project. After that Vivado will open the freshly deployed project ready for new firmware adventures!
 
+Another approach would be to open up Vivado's .tcl console, and source the .tcl script. Before doing that however, it is requred to enter the following commnad in the .tcl console:
+
+```
+set argv [list <board>]
+```
+
+Where <board> can be one of the following: mmfe8_vmm3, mmfe8_vmm2, mdt_mu2e, mdt_446, gpvmm, mmfe1
 
 ## Useful links
 
