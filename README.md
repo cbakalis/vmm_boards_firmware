@@ -34,7 +34,7 @@ Another approach would be to open up Vivado's .tcl console, and source the .tcl 
 set argv [list <board>]
 ```
 
-Where the board can be one of the following: mmfe8_vmm3, mmfe8_vmm2, mdt_mu2e, mdt_446, gpvmm, mmfe1
+And because this is the VMM3 version of the firmware, the 'board' field of the above command can be one of the following: mmfe8_vmm3, mdt_mu2e, mdt_446, gpvmm, mmfe1 
 
 ## Useful links
 
