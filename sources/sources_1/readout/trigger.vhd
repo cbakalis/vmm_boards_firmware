@@ -127,15 +127,19 @@ architecture Behavioral of trigger is
  
     -- Special Readout Mode
     signal request2ckbc_i    : std_logic := '0';
-    signal trigLatencyCnt    : integer range 0 to 255 := 0;
-    signal trigLatency       : integer := 140;
-    signal trigLatencyExtra  : integer := 88; -- 88*6.25=550ns
+    signal trigLatencyCnt    : unsigned(15 downto 0) := (others => '0');
+    signal trigLatency       : unsigned(15 downto 0) := x"008c";
+    signal trigLatencyExtra  : unsigned(15 downto 0) := x"0058"; -- 88*6.25=550ns
     
     type stateType is (waitingForTrigger, waitingForLatency, waitingForSingleCKBC, changeNumberOfCKBC, 
                        timeoutThenRequest, reqOneCKBC,  waitingForLatency_1, waitingForLatency_2, 
-                       timeoutBeforeIdle, issueRequest, checkTrigger);
+                       timeoutBeforeIdle, issueRequest, checkTrigger, checkForTrg);
     signal state            : stateType := waitingForTrigger;
     signal state_l0         : stateType := waitingForTrigger;
+    
+    attribute FSM_ENCODING              : string;
+    attribute FSM_ENCODING of state     : signal is "ONE_HOT";
+    attribute FSM_ENCODING of state_l0  : signal is "ONE_HOT";
 
     
 ---------------------------------------------------------------------------------------------- Uncomment for hold window Start
@@ -305,7 +309,7 @@ begin
     if rising_edge(clk_art) then
         if(rst_trig = '1')then
             request2ckbc_i  <= '0';
-            trigLatencyCnt  <= 0;
+            trigLatencyCnt  <= (others => '0');
             sel_number      <= '0';
             trigger_pf_i    <= '0';
             state           <= waitingForTrigger;
@@ -316,8 +320,9 @@ begin
                     request2ckbc_i      <= '0';
                     sel_number          <= '0';
                     trigger_pf_i        <= '0';
-                    trigLatencyCnt      <= 0;
-                    if  tren_buff_ff_synced = '1' and tr_out_i = '1' and ckbcMode_ff_synced = '1' then
+                    trigLatencyCnt      <= (others => '0');
+                    if ((tren_buff_ff_synced = '1' and tr_out_i = '1' and ckbcMode_ff_synced = '1' and mode_ff_synced = '1') or
+                        (tren_buff_ff_synced = '1' and trint = '1' and ckbcMode_ff_synced = '1' and mode_ff_synced = '0'))then
                         state               <= waitingForLatency;
                     end if;
                     
@@ -330,7 +335,7 @@ begin
                     
                 when issueRequest =>
                     request2ckbc_i      <= '1';
-                    trigLatencyCnt      <= 0;
+                    trigLatencyCnt      <= (others => '0');
                     state               <= waitingForSingleCKBC;
 
                 when waitingForSingleCKBC =>
@@ -338,7 +343,7 @@ begin
                     if trigLatencyCnt < trigLatencyExtra then
                         trigLatencyCnt <= trigLatencyCnt + 1;
                     else
-                        trigLatencyCnt <= 0;
+                        trigLatencyCnt <= (others => '0');
                         state          <= changeNumberOfCKBC;
                     end if;
 
@@ -355,7 +360,7 @@ begin
 
                 when reqOneCKBC =>
                     request2ckbc_i <= '1';
-                    trigLatencyCnt <= 0;
+                    trigLatencyCnt <= (others => '0');
                     state          <=  timeoutBeforeIdle;
 
                 when timeoutBeforeIdle =>
@@ -364,13 +369,20 @@ begin
                     if trigLatencyCnt < 20 then
                         trigLatencyCnt <= trigLatencyCnt + 1;
                     else
-                        state          <= waitingForTrigger;
+                        state          <= checkForTrg;
                     end if;
 
-
+               when checkForTrg => -- wait for trigs to go low
+                    if((trint = '0' and mode_ff_synced = '0') or
+                        (tr_out_i = '0' and mode_ff_synced = '1'))then
+                        state <= waitingForTrigger;
+                    else
+                        state <= checkForTrg;
+                    end if;
+                    
                 when others =>
                     request2ckbc_i      <= '0';
-                    trigLatencyCnt      <= 0;
+                    trigLatencyCnt      <= (others => '0');
                     sel_number          <= '0';
                     trigger_pf_i        <= '0';
                     state               <= waitingForTrigger;
@@ -390,7 +402,7 @@ begin
     if(rising_edge(clk_art))then
         if(rst_trig = '1')then
             level_0_req     <= '0';
-            trigLatencyCnt  <= 0;
+            trigLatencyCnt  <= (others => '0');
             accept_wr_i     <= '0';
             state_l0        <= waitingForTrigger;
         else
@@ -399,7 +411,7 @@ begin
             when waitingForTrigger =>
                 level_0_req     <= '0';
                 accept_wr_i     <= '0';
-                trigLatencyCnt  <= 0;
+                trigLatencyCnt  <= (others => '0');
 
                 -- proceed only if pf is @ idle
                 if((trext_ff_synced = '1' and trmode_ff_synced = '1' and pfBusy_stage_synced = '0') or
@@ -423,7 +435,7 @@ begin
                     trigLatencyCnt  <= trigLatencyCnt + 1;
                     state_l0        <= waitingForLatency_2;
                 else
-                    trigLatencyCnt  <= 0;
+                    trigLatencyCnt  <= (others => '0');
                     state_l0        <= issueRequest;
                 end if;
                 
@@ -448,7 +460,7 @@ begin
 
             when others =>
                 level_0_req     <= '0';
-                trigLatencyCnt  <= 0;
+                trigLatencyCnt  <= (others => '0');
                 accept_wr_i     <= '0';
                 state_l0        <= waitingForTrigger;
             end case;
@@ -614,8 +626,8 @@ event_counter       <= event_counter_i;
 tr_out              <= tr_out_i_ff_synced;
 request2ckbc        <= request2ckbc_i;
 trraw_synced125     <= trraw_synced125_i;
-trigLatency         <= to_integer(unsigned(latency));
-trigLatencyExtra    <= to_integer(unsigned(latency_extra));
+trigLatency         <= unsigned(latency);
+trigLatencyExtra    <= unsigned(latency_extra);
 accept_wr           <= accept_wr_synced125;
 level_0             <= level_0_25ns;
 cktp_width_final    <= std_logic_vector(unsigned(cktp_pulse_width)*"1010000");  -- input x 80

@@ -52,6 +52,7 @@ entity packet_formation is
         clk             : in std_logic;
 
         newCycle        : in std_logic;
+        ckbcMode        : in std_logic;
         
         trigVmmRo       : out std_logic;
         vmmId           : out std_logic_vector(2 downto 0);
@@ -95,13 +96,13 @@ architecture Behavioral of packet_formation is
     signal globBcid         : std_logic_vector(15 downto 0) := x"FFFF"; --( others => '0' );
     signal precCnt          : std_logic_vector(7 downto 0)  := x"00"; --( others => '0' );
     signal globBcid_i       : std_logic_vector(15 downto 0);
-    signal globBCID_etr		: std_logic_vector(11 downto 0) := (others => '0'); --globBCID counter as it is coming from ETR
+    signal globBCID_etr     : std_logic_vector(11 downto 0) := (others => '0'); --globBCID counter as it is coming from ETR
     signal eventCounter_i   : unsigned(31 downto 0) := to_unsigned(0, 32);
     signal wait_Cnt         : integer range 0 to 31 := 0;
     signal vmmId_cnt        : integer range 0 to 7 := 0;
-    signal trigLatencyCnt   : integer := 0;
-    signal trigLatency      : integer := 140; -- 700ns (140x5ns)
-    signal pfBusy_i         : std_logic	:= '0';               -- control signal to be sent to ETR
+    signal trigLatencyCnt   : unsigned(15 downto 0) := (others => '0');
+    signal trigLatency      : unsigned(15 downto 0) := x"008c"; -- 700ns (140x5ns)
+    signal pfBusy_i         : std_logic := '0';               -- control signal to be sent to ETR
 
     signal daqFIFO_wr_en_hdr    : std_logic                     := '0';
     signal daqFIFO_wr_en_drv    : std_logic                     := '0';
@@ -218,7 +219,7 @@ begin
                 rst_l0                  <= '0';
                 sel_wrenable            <= '0';
                 drv_enable              <= '0';
-                trigLatencyCnt          <= 0;
+                trigLatencyCnt          <= (others => '0');
                 sel_cnt                 <= (others => '0');
                 rst_FIFO                <= '0';
                 if newCycle = '1' then
@@ -237,10 +238,10 @@ begin
                 if(trigLatencyCnt > trigLatency and is_mmfe8 = '1')then 
                     state           <= S2;
                 -- now using external signaling
-                elsif(latency_done = '1' and is_mmfe8 = '0')then
+                elsif(latency_done = '1' and is_mmfe8 = '0' and ckbcMode = '1')then
                     state           <= captureEventID;
---                elsif(trigLatencyCnt > trigLatency and is_mmfe8 = '0')then
---                    state           <= captureEventID;
+               elsif(trigLatencyCnt > trigLatency and is_mmfe8 = '0' and ckbcMode = '0')then
+                    state           <= captureEventID;
                 else
                     trigLatencyCnt  <= trigLatencyCnt + 1;
                 end if;
@@ -479,7 +480,7 @@ port map (
     trigVmmRo       <= triggerVmmReadout_i;
     vmmId           <= vmmId_i;
     --trigLatency     <= 50 + to_integer(unsigned(latency)); --(hard set to 400ns )--to_integer(unsigned(latency));
-    trigLatency     <= to_integer(unsigned(latency)); -- latency_extra*8ns, after single CKBC, start reading
+    trigLatency     <= unsigned(latency); -- latency_extra*8ns, after single CKBC, start reading
     pfBusy          <= pfBusy_i;
     globBCID_etr    <= glBCID;
     
@@ -501,8 +502,8 @@ port map (
 --    probe1                  =>  probe1_out
 --);
 
-    probe0_out(9 downto 0)             <= std_logic_vector(to_unsigned(trigLatencyCnt, 10));
-    probe0_out(19 downto 10)           <= std_logic_vector(to_unsigned(trigLatency, 10));
+    probe0_out(9 downto 0)             <= (others => '0');
+    probe0_out(19 downto 10)           <= (others => '0');
     probe0_out(20)                     <= '0';
     probe0_out(21)                     <= artValid;
     probe0_out(22)                     <= trraw_synced125;

@@ -775,26 +775,18 @@ architecture Behavioral of vmmFrontEnd is
 --    attribute mark_debug of UDPDone                   : signal is "TRUE";
 --    attribute mark_debug of CKBC_glbl                 : signal is "TRUE";
 --    attribute mark_debug of tr_out_i                  : signal is "TRUE";
---    attribute mark_debug of conf_state                : signal is "TRUE";
---    attribute mark_debug of rd_ena_buff               : signal is "TRUE";
---    attribute mark_debug of vmmWord_i                 : signal is "TRUE";
 --    attribute mark_debug of CKTP_glbl                 : signal is "TRUE";
---    attribute mark_debug of level_0                   : signal is "TRUE";
---    attribute mark_debug of rst_l0_pf                 : signal is "TRUE";
 --    attribute mark_debug of vmmWordReady_i            : signal is "TRUE";
 --    attribute mark_debug of vmmEventDone_i            : signal is "TRUE";
 --    attribute mark_debug of dt_state                  : signal is "TRUE";
---    attribute mark_debug of daq_data_out_i            : signal is "TRUE";
 --    attribute mark_debug of daq_enable_i              : signal is "TRUE";
 --    attribute mark_debug of pf_trigVmmRo              : signal is "TRUE";
 --    attribute mark_debug of dt_cntr_st                : signal is "TRUE";
---    attribute mark_debug of linkHealth_bmsk           : signal is "TRUE";
---    attribute mark_debug of EXT_TRIGGER_i             : signal is "TRUE";
---    attribute mark_debug of ctf_rst_s1                : signal is "TRUE";
---    attribute mark_debug of tr_hold_all               : signal is "TRUE";
 --    attribute mark_debug of vmmArtReady               : signal is "TRUE";
---    attribute mark_debug of vmmArtData                : signal is "TRUE";
-
+--    attribute mark_debug of latency_conf              : signal is "TRUE";
+--    attribute mark_debug of trigger_pf                : signal is "TRUE";
+--    attribute mark_debug of latency_extra             : signal is "TRUE";
+    
     -------------------------------------------------------------------
     -- Other
     -------------------------------------------------------------------   
@@ -965,7 +957,7 @@ architecture Behavioral of vmmFrontEnd is
           level_0         : out std_logic;
           delay_limit     : in std_logic_vector(15 downto 0);
           sel_number      : out std_logic;
-          latency_extra   : in std_logic_vector(15 DOWNTO 0);
+          latency_extra   : in std_logic_vector(15 downto 0);
           trigger_pf      : out std_logic;  
           
           event_counter   : out std_logic_vector(31 downto 0);
@@ -982,6 +974,7 @@ architecture Behavioral of vmmFrontEnd is
             artEnabled      : std_logic);
     port (
             clk             : in std_logic;
+            ckbcMode        : in std_logic;
     
             newCycle        : in std_logic;
             
@@ -1862,7 +1855,7 @@ readout_vmm: vmm_readout_wrapper
 
 trigger_instance: trigger
     generic map(vmmReadoutMode => vmmReadoutMode,
-                useDelay       => '0') -- use delay or external busy
+                useDelay       => '1') -- use delay or external busy
     port map(
         clk             => userclk2,
         ckbc            => CKBC_glbl,
@@ -1928,7 +1921,7 @@ packet_formation_instance: packet_formation
                 artEnabled      => artEnabled)
     port map(
         clk             => userclk2,
-        
+        ckbcMode        => ckbcMode,
         newCycle        => pf_newCycle,
         
         trigVmmRo       => pf_trigVmmRo,
@@ -2724,7 +2717,7 @@ end process;
     overviewProbe(11)                  <= daq_enable_i;
     overviewProbe(12)                  <= pf_trigVmmRo;
     overviewProbe(13)                  <= vmmArtReady;
-    overviewProbe(14)                  <= tr_hold_all;
+    overviewProbe(14)                  <= trigger_pf;
     overviewProbe(15)                  <= rd_ena_buff;
     overviewProbe(19 downto 16)        <= dt_state;
     overviewProbe(23 downto 20)        <= FIFO2UDP_state;
@@ -2732,13 +2725,9 @@ end process;
     overviewProbe(25)                  <= UDPDone;
     overviewProbe(26)                  <= CKBC_glbl;
     overviewProbe(27)                  <= tr_out_i;
-    overviewProbe(29 downto 28)        <= (others => '0');
-    overviewProbe(30)                  <= level_0;
-    overviewProbe(31)                  <= rst_l0_pf;
-    overviewProbe(47 downto 32)        <= vmmWord_i;
-    overviewProbe(51 downto 48)        <= dt_cntr_st;
-    overviewProbe(57 downto 52)        <= (others => '0');
-    overviewProbe(63 downto 58)        <= vmmArtData;
+    overviewProbe(31 downto 28)        <= dt_cntr_st;
+    overviewProbe(47 downto 32)        <= latency_conf;
+    overviewProbe(63 downto 48)        <= latency_extra;
 
     vmmSignalsProbe(7 downto 0)        <= (others => '0');
     vmmSignalsProbe(15 downto 8)       <= cktk_out_vec;
