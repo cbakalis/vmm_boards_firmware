@@ -42,6 +42,9 @@ architecture Behavioral of elink_daq_tester is
     signal wr_en_i      : std_logic := '0';
     signal init         : std_logic := '1';
     signal check_state  : std_logic_vector(3 downto 0) := (others => '0');
+    
+    signal empty_elink_i : std_logic := '0';
+    signal empty_elink_s : std_logic := '0';
 
     type stateType is (IDLE, START, DELAY, WRITE_START, STEP_0_MOP, STEP_1_MOP, STEP_2_MOP, 
                        DELAY_MOP, STEP_3_MOP, WRITE_EOP_0, WRITE_EOP_1, DONE_SENDING);
@@ -49,6 +52,10 @@ architecture Behavioral of elink_daq_tester is
 
     attribute FSM_ENCODING          : string;
     attribute FSM_ENCODING of state : signal is "ONE_HOT";
+    
+    attribute ASYNC_REG                  : string;
+    attribute ASYNC_REG of empty_elink_i : signal is "TRUE";
+    attribute ASYNC_REG of empty_elink_s : signal is "TRUE";
 
 begin
 
@@ -69,7 +76,7 @@ begin
                 sel         <= "10"; -- select SOP
                 wr_en_i     <= '0';
 
-                if(tester_ena = '1' and empty_elink = '1')then -- proceed if elink fifo is empty      
+                if(tester_ena = '1' and empty_elink_s = '1')then -- proceed if elink fifo is empty      
                     state <= DELAY;
                 else
                     state <= IDLE;
@@ -158,6 +165,14 @@ begin
     when "11" =>    dout <= "00" & x"5678"; -- DATA 5678
     when others =>  dout <= (others => '0'); 
     end case;
+end process;
+
+syncEmptyProc: process(clk_in)
+begin
+    if(rising_edge(clk_in))then
+        empty_elink_i <= empty_elink;
+        empty_elink_s <= empty_elink_i;
+    end if;
 end process;
 
     wr_en           <= wr_en_i;

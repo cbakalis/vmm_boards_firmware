@@ -1830,8 +1830,8 @@ udp_reply_instance: udp_reply_handler
 mmcm_master: clk_wiz_gen    
     port map (
         -- Clock in ports
-        clk_in1_p   => X_2V5_DIFF_CLK_P, --CHANGE THIS TO ELINK_RX CLK
-        clk_in1_n   => X_2V5_DIFF_CLK_N,
+        clk_in1_p   => ELINK_DAQ_CLK_P, --X_2V5_DIFF_CLK_N
+        clk_in1_n   => ELINK_DAQ_CLK_N,
         -- Clock out ports  
         clk_out_160 => clk_160,
         clk_out_320 => clk_320,

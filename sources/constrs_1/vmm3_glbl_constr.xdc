@@ -76,6 +76,9 @@ set_output_delay -clock clk_sck -min -2.950 [get_ports IO*_IO]
 #=============================== False Paths ==========================
 set_false_path -from [get_ports CH_TRIGGER]
 
+#VIO
+set_false_path -from [get_cells vio_elink_instance/inst/PROBE_OUT_ALL_INST/G_PROBE_OUT[*].PROBE_OUT0_INST/Probe_out_reg[*]]
+
 # Global reset false path
 set_false_path -reset_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_rst_reg]
 set_false_path -reset_path -from [get_cells i2c_module/phy_resetn_reg]
@@ -175,6 +178,13 @@ set_false_path -from [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/r
 set_false_path -from [get_cells trigger_instance/generate_level0.accept_wr_i_reg] -to [get_cells trigger_instance/accept_wr_i_stage1_reg]
 set_false_path -from [get_cells packet_formation_instance/pfBusy_i_reg] -to [get_cells trigger_instance/pfBusy_stage1_reg]
 set_false_path -from [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].des_dec_inst/commas_true_reg] -to [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/commas_true_s0_reg[*]]
+
+#E-link false paths
+set_false_path -from [get_cells DAQ_ELINK/rst_i_rx_reg] -to [get_cells DAQ_ELINK/rst_i_rx_s0_reg]
+set_false_path -from [get_cells DAQ_ELINK/rst_i_tx_reg] -to [get_cells DAQ_ELINK/rst_i_tx_s0_reg]
+set_false_path -from [get_cells DAQ_ELINK/elink_tx_instance/UEF/epathFIFO/U0/inst_fifo_gen/gconvfifo.rf/grf.rf/gntv_or_sync_fifo.gl0.rd/gras.rsts/ram_empty_i_reg] -to [get_cells DAQ_ELINK/DAQ2ELINK_instance/empty_elink_i_reg]
+set_false_path -from [get_cells DAQ_ELINK/elink_tx_instance/UEF/epathFIFO/U0/inst_fifo_gen/gconvfifo.rf/grf.rf/gntv_or_sync_fifo.gl0.rd/gras.rsts/ram_empty_i_reg] -to [get_cells DAQ_ELINK/testing_instance/empty_elink_i_reg]
+
 
 ## SPI FLASH BEGIN ##
 # this is to ensure min routing delay from SCK generation to STARTUP input
