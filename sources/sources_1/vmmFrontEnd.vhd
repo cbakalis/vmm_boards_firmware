@@ -1,9 +1,9 @@
 -------------------------------------------------------------------------------------
 -- Company: NTUA - BNL
--- Engineer: Paris Moschovakos, Panagiotis Gkountoumis & Christos Bakalis
+-- Engineers: Christos Bakalis, Panagiotis Gkountoumis, Paris Moschovakos
 --
 -- Copyright Notice/Copying Permission:
---    Copyright 2017 Paris Moschovakos, Panagiotis Gkountoumis & Christos Bakalis
+--    Copyright 2017 Christos Bakalis, Panagiotis Gkountoumis, Paris Moschovakos
 --
 --    This file is part of NTUA-BNL_VMM_firmware.
 --
@@ -45,6 +45,7 @@
 -- 12.06.2017 Added support for MMFE1 board (Paris)
 -- 21.06.2017 Added support for GPVMM board (Paris)
 -- 22.06.2017 Added ODDRs for VMM clock forwarding optimization. (Christos Bakalis)
+-- 22.08.2017 Added e-link wrapper. (Christos Bakalis)
 --
 ----------------------------------------------------------------------------------
 
@@ -248,6 +249,25 @@ entity vmmFrontEnd is
         rxn                   : IN  std_logic;                     -- Differential -ve for serial reception from PMD to PMA.
         phy_int               : OUT std_logic;
         phy_rstn_out          : OUT std_logic;
+
+        ---- E-link Interface, Data
+        -----------------------------------------
+        ELINK_DAQ_TX_P        : OUT   STD_LOGIC;
+        ELINK_DAQ_TX_N        : OUT   STD_LOGIC;
+        ELINK_DAQ_RX_P        : IN    STD_LOGIC;
+        ELINK_DAQ_RX_N        : IN    STD_LOGIC;
+        --ELINK_TTC_RX_P        : IN    STD_LOGIC;
+        --ELINK_TTC_RX_N        : IN    STD_LOGIC;
+
+        ---- E-link Interface, Clock
+        -----------------------------------------
+        ELINK_DAQ_CLK_P       : IN    STD_LOGIC;
+        ELINK_DAQ_CLK_N       : IN    STD_LOGIC;
+        --ELINK_TTC_CLK_P       : IN    STD_LOGIC;
+        --ELINK_TTC_CLK_N       : IN    STD_LOGIC;
+        
+        -- E-link MMCM locked LED
+        LED_LOCKED            : OUT   STD_LOGIC;
         
         -- AXI4SPI Flash Configuration
         ---------------------------------------
@@ -267,7 +287,7 @@ architecture Behavioral of vmmFrontEnd is
     signal default_MAC      : std_logic_vector(47 downto 0) := x"002320189223";
     signal default_destIP   : std_logic_vector(31 downto 0) := x"c0a80010";
     -- Set to '1' for MMFE8 or '0' for 1-VMM boards
-    constant is_mmfe8       : std_logic := '0';
+    constant is_mmfe8       : std_logic := '1';
     -- Set to '0' for continuous readout mode or '1' for L0 readout mode
     constant vmmReadoutMode : std_logic := '1';
     -- Set to '1' to enable the ART header
@@ -542,6 +562,8 @@ architecture Behavioral of vmmFrontEnd is
     signal clk_200          : std_logic := '0';
     signal clk_40           : std_logic := '0';
     signal clk_50           : std_logic := '0';
+    signal clk_320          : std_logic := '0';
+    signal clk_80           : std_logic := '0';    
     signal master_locked    : std_logic := '0';
     signal CKBC_glbl        : std_logic := '0';
     signal cktp_pulse_width : std_logic_vector(7 downto 0)     := x"04"; -- 2 us
@@ -553,6 +575,28 @@ architecture Behavioral of vmmFrontEnd is
     signal ckbcMode         : std_logic := '0';
     signal CKTP_raw         : std_logic := '0';
     signal ckbc_max_num     : std_logic_vector(7 downto 0)     := x"20";
+    
+    ------------------------------------------------------------------
+    -- E-LINK signals
+    ------------------------------------------------------------------ 
+    signal rst_elink_mmcm       : std_logic := '0';
+    signal rst_elink_glbl       : std_logic := '0';
+    signal rst_elink_tx         : std_logic := '0';
+    signal rst_elink_rx         : std_logic := '0';
+    signal swap_tx              : std_logic := '0';
+    signal swap_rx              : std_logic := '0';
+  
+    signal pattern_enable       : std_logic := '0'; -- DEFAULT: disable pattern
+    signal daq_enable           : std_logic := '0'; -- DEFAULT: disable daq
+    signal loopback_enable      : std_logic := '0'; -- DEFAULT: disable loopback
+    
+    signal elink_DAQ_tx         : std_logic := '0';
+    signal elink_DAQ_rx         : std_logic := '0';
+    signal elink_busy           : std_logic := '0';
+    signal wr_en_safe           : std_logic := '0';
+    signal flush_elink          : std_logic := '0';
+    signal rst_elink            : std_logic := '0';
+    signal trigger_cnt          : std_logic_vector(15 downto 0) := (others => '0');
     
     -------------------------------------------------
     -- Flow FSM signals
@@ -781,6 +825,8 @@ architecture Behavioral of vmmFrontEnd is
     -- 21. ila_overview
     -- 22. art
     -- 23. vmm_oddr_wrapper
+    -- 24. elink_wrapper
+    -- 25. vio_elink
     -------------------------------------------------------------------
     -- 1
     component clk_wiz_gen
@@ -794,6 +840,8 @@ architecture Behavioral of vmmFrontEnd is
         clk_out_200       : out std_logic;
         clk_out_50        : out std_logic;
         clk_out_40        : out std_logic;
+        clk_out_80        : out std_logic;
+        clk_out_320       : out std_logic;
         -- Status and control signals
         reset             : in  std_logic;
         gen_locked        : out std_logic
@@ -959,6 +1007,12 @@ architecture Behavioral of vmmFrontEnd is
             rst_vmm         : out std_logic;
             linkHealth_bmsk : in std_logic_vector(8 downto 1);
             rst_FIFO        : out std_logic;
+            
+            elink_busy      : in  std_logic; -- elink is busy sending
+            elink_flush     : out std_logic; -- flush the TX FIFOs
+            elink_rst       : out std_logic; -- reset the elink DAQ driver
+            elink_wr_rdy    : out std_logic; -- flag indicating elink DAQ driver can write to its FIFO
+            trigger_cnt     : out std_logic_vector(15 downto 0);
             
             latency         : in std_logic_vector(15 downto 0);
             dbg_st_o        : out std_logic_vector(4 downto 0);
@@ -1418,6 +1472,63 @@ architecture Behavioral of vmmFrontEnd is
         -------------------------------------------------------
     );
     end component;
+    -- 24
+    component elink_wrapper
+    Generic(DataRate        : integer;  -- 80 / 160 / 320 MHz
+            elinkEncoding   : std_logic_vector (1 downto 0)); -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding
+    Port(
+        ---------------------------------
+        ----- General/VIO Interface -----
+        user_clock      : in  std_logic;  -- user logic clocking
+        pattern_ena     : in  std_logic;  -- if high, test packets are sent.
+        daq_ena         : in  std_logic;  -- if high, DAQ data are sent.
+        loopback_ena    : in  std_logic;  -- if high, internal loopback mode is enabled
+        glbl_rst        : in  std_logic;  -- reset the entire component
+        rst_tx          : in  std_logic;  -- reset the e-link tx sub-component
+        rst_rx          : in  std_logic;  -- reset the e-link rx sub-component
+        swap_tx         : in  std_logic;  -- swap the tx-side bits
+        swap_rx         : in  std_logic;  -- swap the rx-side bits
+        ttc_detected    : out std_logic;  -- TTC signal detected
+        ---------------------------------
+        -------- E-link clocking --------
+        clk_40          : in  std_logic;
+        clk_80          : in  std_logic;
+        clk_160         : in  std_logic;
+        clk_320         : in  std_logic;
+        elink_locked    : in  std_logic;
+        ---------------------------------
+        ---- E-link Serial Interface ----
+        elink_tx        : out std_logic;  -- elink tx bus
+        elink_rx        : in  std_logic;  -- elink rx bus
+        ---------------------------------
+        --------- PF Interface ----------
+        din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
+        din_last        : in  std_logic;                     -- last packet
+        elink_busy      : out std_logic;                     -- elink is sending DAQ data
+        wr_en_safe      : in  std_logic;                     -- it is safe to write to the DAQ FIFO
+        trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)
+        flush_pf        : in  std_logic;                     -- flush the FIFOs (from PF)
+        rst_pf          : in  std_logic;                     -- reset the driver module
+        vmm_id          : in  std_logic_vector(2 downto 0);  -- vmm that is being read
+        wr_en_daq       : in  std_logic                      -- write enable from packet formation
+        );
+    end component;
+    --25
+COMPONENT vio_elink
+      PORT (
+        clk : in std_logic;
+        probe_in0 : in std_logic_vector(0 downto 0);
+        probe_out0 : out std_logic_vector(0 downto 0);
+        probe_out1 : out std_logic_vector(0 downto 0);
+        probe_out2 : out std_logic_vector(0 downto 0);
+        probe_out3 : out std_logic_vector(0 downto 0);
+        probe_out4 : out std_logic_vector(0 downto 0);
+        probe_out5 : out std_logic_vector(0 downto 0);
+        probe_out6 : out std_logic_vector(0 downto 0);
+        probe_out7 : out std_logic_vector(0 downto 0);
+        probe_out8 : out std_logic_vector(0 downto 0)
+      );
+    END COMPONENT;
 
 begin
     
@@ -1719,14 +1830,16 @@ udp_reply_instance: udp_reply_handler
 mmcm_master: clk_wiz_gen    
     port map (
         -- Clock in ports
-        clk_in1_p   => X_2V5_DIFF_CLK_P,
+        clk_in1_p   => X_2V5_DIFF_CLK_P, --CHANGE THIS TO ELINK_RX CLK
         clk_in1_n   => X_2V5_DIFF_CLK_N,
         -- Clock out ports  
         clk_out_160 => clk_160,
+        clk_out_320 => clk_320,
         clk_out_500 => clk_500,
         clk_out_200 => clk_200,
         clk_out_50  => clk_50,
         clk_out_40  => clk_40,
+        clk_out_80  => clk_80,
         -- Status and control signals                
         reset       => '0',
         gen_locked  => master_locked
@@ -1886,6 +1999,12 @@ packet_formation_instance: packet_formation
         rst_vmm         => rst_vmm,
         linkHealth_bmsk => linkHealth_bmsk,
         rst_FIFO        => pf_rst_FIFO,
+        
+        elink_busy      => elink_busy,  -- elink is busy sending
+        elink_flush     => flush_elink, -- flush the TX FIFOs
+        elink_rst       => rst_elink,   -- reset the elink DAQ driver
+        elink_wr_rdy    => wr_en_safe,  -- flag indicating elink DAQ driver can write to its FIFO
+        trigger_cnt     => trigger_cnt,
 
         latency         => latency_conf,
         dbg_st_o        => pf_dbg_st,
@@ -2080,7 +2199,86 @@ vmm_oddr_inst: vmm_oddr_wrapper
         ckart_toBuf_vec => ckart_vec
         -------------------------------------------------------
     );
+
+-- DAQ path E-link
+DAQ_ELINK: elink_wrapper
+    generic map(DataRate      => 80,
+                elinkEncoding => "01") --8b/10b encoding
+    port map(
+        ---------------------------------
+        ----- General/VIO Interface -----
+        user_clock      => userclk2,
+        pattern_ena     => pattern_enable,  -- pattern data enabled by default, from VIO
+        daq_ena         => daq_enable,      -- from VIO
+        loopback_ena    => loopback_enable, -- from VIO
+        glbl_rst        => rst_elink_glbl,  -- from VIO
+        rst_tx          => rst_elink_tx,    -- from VIO and PF
+        rst_rx          => rst_elink_rx,    -- from VIO
+        swap_tx         => swap_tx,         -- from VIO
+        swap_rx         => swap_rx,         -- from VIO
+        ttc_detected    => open,
+        ---------------------------------
+        -------- E-link clocking --------
+        clk_40          => clk_40,
+        clk_80          => clk_80,
+        clk_160         => clk_160,
+        clk_320         => clk_320,
+        elink_locked    => master_locked,
+        ---------------------------------
+        ---- E-link Serial Interface ----
+        elink_tx        => elink_DAQ_tx,
+        elink_rx        => elink_DAQ_rx,
+        ---------------------------------
+        --------- PF Interface ----------
+        din_daq         => daq_data_out_i,
+        wr_en_daq       => daq_wr_en_i,
+        din_last        => end_packet_daq_int,
+        elink_busy      => elink_busy,
+        wr_en_safe      => wr_en_safe,
+        trigger_cnt     => trigger_cnt,
+        flush_pf        => flush_elink,
+        rst_pf          => rst_elink,
+        vmm_id          => pf_vmmIdRo
+    );
     
+vio_elink_instance: vio_elink
+    port map(
+        clk             => userclk2,
+        probe_in0(0)    => master_locked,
+        probe_out0(0)   => pattern_enable,
+        probe_out1(0)   => daq_enable,
+        probe_out2(0)   => loopback_enable,
+        probe_out3(0)   => rst_elink_glbl,
+        probe_out4(0)   => rst_elink_mmcm,
+        probe_out5(0)   => rst_elink_tx,
+        probe_out6(0)   => rst_elink_rx,
+        probe_out7(0)   => swap_rx,
+        probe_out8(0)   => swap_tx
+   );
+
+--    clk => clk,
+--    probe_in0 => probe_in0,
+--    probe_in1 => probe_in1,
+--    probe_out0 => probe_out0,
+--    probe_out1 => probe_out1,
+--    probe_out2 => probe_out2,
+--    probe_out3 => probe_out3,
+--    probe_out4 => probe_out4,
+--    probe_out5 => probe_out5,
+--    probe_out6 => probe_out6,
+--    probe_out7 => probe_out7,
+--    probe_out8 => probe_out8
+
+---------------------------- E-LINK BUFFERS ----------------------------------------------------------------------
+elink_tx_daq_buf: OBUFDS generic map  (IOSTANDARD => "DEFAULT" , SLEW => "FAST")
+                         port map     (O =>  ELINK_DAQ_TX_P, OB => ELINK_DAQ_TX_N, I =>  elink_DAQ_tx);
+elink_rx_daq_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT", IBUF_LOW_PWR => FALSE, DIFF_TERM => TRUE)
+                         port map     (O =>  elink_DAQ_rx, I =>  ELINK_DAQ_RX_P, IB => ELINK_DAQ_RX_N);    
+--elink_rx_ttc_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT" , DIFF_TERM => TRUE)
+--                         port map     (O =>  elink_TTC_rx, I =>  ELINK_TTC_RX_P, IB => ELINK_TTC_RX_N);
+------------------------------------------------------------------------------------------------------------------
+
+led_obuf:        OBUF   port map (O => LED_LOCKED, I => master_locked);
 
 ----------------------------------------------------CS------------------------------------------------------------
 cs_obuf_1:  OBUF  port map  (O => CS_1, I => vmm_cs_vec_obuf(1));

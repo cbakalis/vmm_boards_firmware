@@ -182,6 +182,66 @@ set_property IOSTANDARD DIFF_HSUL_12 [get_ports ART_OUT_P]
 set_property IOSTANDARD DIFF_HSUL_12 [get_ports ART_OUT_N]
 #------- UNUSED PINS FOR MMFE8 ***END***------------------------
 
+#########################ELINKS#################################
+####--------------------------------------------------------###
+#Receiving data from RXP_1/RXN_1 of MMFE8 miniSAS. (DAQ)
+set_property PACKAGE_PIN AA9     [get_ports ELINK_DAQ_RX_P]
+set_property PACKAGE_PIN AB10    [get_ports ELINK_DAQ_RX_N]
+
+#Transmitting data to TXP_1/TXN_1 of MMFE8 miniSAS. (DAQ)
+# ?? T16 U16
+set_property PACKAGE_PIN W14     [get_ports ELINK_DAQ_TX_P]
+set_property PACKAGE_PIN Y14     [get_ports ELINK_DAQ_TX_N]
+
+#ELINK clock RXP_0/RXN_0 of MMFE8 miniSAS. (DAQ)
+set_property PACKAGE_PIN V13     [get_ports ELINK_DAQ_CLK_P]
+set_property PACKAGE_PIN V14     [get_ports ELINK_DAQ_CLK_N]
+
+#LOCK LED
+set_property IOSTANDARD LVCMOS12 [get_ports LED_LOCKED]
+set_property PACKAGE_PIN Y17     [get_ports LED_LOCKED]
+
+#W11 P
+#W12 N TTC RXP_2
+####--------------------------------------------------------###
+
+##Receiving data from RXP_1/RXN_1 of MMFE8 miniSAS. (TTC)
+#set_property PACKAGE_PIN AA9         [get_ports ELINK_TTC_RX_P]
+#set_property PACKAGE_PIN AB10        [get_ports ELINK_TTC_RX_N]
+
+##ELINK TTC Clock
+#set_property PACKAGE_PIN W11         [get_ports ELINK_TTC_CLK_P]
+#set_property PACKAGE_PIN W12         [get_ports ELINK_TTC_CLK_N]
+####--------------------------------------------------------###
+
+set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_DAQ_RX_P]
+set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_DAQ_RX_N]
+set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_DAQ_TX_P]
+set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_DAQ_TX_N]
+set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_DAQ_CLK_P]
+set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_DAQ_CLK_N]
+
+#set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_TTC_RX_P]
+#set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_TTC_RX_N]
+#set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_TTC_CLK_P]
+#set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_TTC_CLK_N]
+
+# Create clock on the clock input pad and use it as reference clock in set_input_delay
+
+#create_clock -period 25.000 -name clk_elink [get_ports ELINK_DAQ_CLK_P]
+
+create_clock -period 12.500 -name clk_elink_serdes
+#80  mbps = 12.5
+#160 mbps = 6.25
+#320 mbps = 3.125
+
+set_input_delay -clock clk_elink_serdes -max 0.100 [get_ports ELINK_DAQ_RX_P]
+
+set_input_delay -clock clk_elink_serdes -min 0.200 [get_ports ELINK_DAQ_RX_P]
+
+set_output_delay -clock clk_elink_serdes 2.000 [get_ports ELINK_DAQ_TX_P]
+
+
 #########################DATA0 VMM3#############################
 
 set_property IOSTANDARD DIFF_HSUL_12 [get_ports DATA0_1_P]
