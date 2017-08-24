@@ -2,6 +2,7 @@
 #============================= Primary Clocks =========================
 create_clock -period 5.000 -name X_2V5_DIFF_CLK_P -waveform {0.000 2.500} [get_ports X_2V5_DIFF_CLK_P]
 create_clock -period 8.000 -name gtrefclk_p       -waveform {0.000 4.000} [get_ports gtrefclk_p]
+create_clock -period 25.000 -name ELINK_DAQ_CLK_P -waveform {0.000 12.500} [get_ports ELINK_DAQ_CLK_P]
 
 #============================= Virtual Clocks =========================
 #============================= Generated Clocks =======================
@@ -13,10 +14,10 @@ create_generated_clock -name clk_sck -source [get_pins -hierarchical *axi_SPI/ex
 ## SPI FLASH END ##
 
 # Continuous readout generated clock
-create_generated_clock -name roClkCont -source [get_pins mmcm_master/inst/mmcm_adv_inst/CLKOUT3] -divide_by 2 [get_pins readout_vmm/continuousReadoutMode.readout_vmm_cont/vmm_ckdt_i_reg/Q]
+create_generated_clock -name roClkCont -source [get_pins mmcm_master/inst/mmcm_adv_inst/CLKOUT6] -divide_by 2 [get_pins readout_vmm/continuousReadoutMode.readout_vmm_cont/vmm_ckdt_i_reg/Q]
 
 # CKBC generated clock
-create_generated_clock -name ckbc_clk -source [get_pins mmcm_master/inst/mmcm_adv_inst/CLKOUT0] -divide_by 4 [get_pins ckbc_cktp_generator/ckbc_generator/ckbc_out_reg/Q]
+create_generated_clock -name ckbc_clk -source [get_pins mmcm_master/inst/mmcm_adv_inst/CLKOUT2] -divide_by 4 [get_pins ckbc_cktp_generator/ckbc_generator/ckbc_out_reg/Q]
 
 # ODDR/CKDT
 create_generated_clock -name ckdt_1 -source [get_pins vmm_oddr_inst/ODDR_CKDT_1/C] -divide_by 1 [get_pins vmm_oddr_inst/ODDR_CKDT_1/Q]
@@ -90,7 +91,7 @@ set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_r
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/count_reg[*]]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/count_ro_reg[*]]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/ckbc_ro_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/cktp_start_aligned_reg]
+set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_start_aligned_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_skew_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ckbcMode_reg] -to [get_pins ckbc_cktp_generator/CKBC_BUFGMUX/CE0]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_skew_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]]

@@ -230,16 +230,16 @@ set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_DAQ_CLK_N]
 
 #create_clock -period 25.000 -name clk_elink [get_ports ELINK_DAQ_CLK_P]
 
-create_clock -period 12.500 -name clk_elink_serdes
+#create_clock -period 12.500 -name clk_elink_serdes
 #80  mbps = 12.5
 #160 mbps = 6.25
 #320 mbps = 3.125
 
-set_input_delay -clock clk_elink_serdes -max 0.100 [get_ports ELINK_DAQ_RX_P]
+set_input_delay -clock ELINK_DAQ_CLK_P -max 0.100 [get_ports ELINK_DAQ_RX_P]
 
-set_input_delay -clock clk_elink_serdes -min 0.200 [get_ports ELINK_DAQ_RX_P]
+set_input_delay -clock ELINK_DAQ_CLK_P -min 0.200 [get_ports ELINK_DAQ_RX_P]
 
-set_output_delay -clock clk_elink_serdes 2.000 [get_ports ELINK_DAQ_TX_P]
+set_output_delay -clock ELINK_DAQ_CLK_P 2.000 [get_ports ELINK_DAQ_TX_P]
 
 
 #########################DATA0 VMM3#############################
