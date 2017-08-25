@@ -372,9 +372,7 @@ end process;
 -- reads data from the Elink2FIFO module when it is not empty
 readFIFOproc: process(clk_160)
 begin
-    if(glbl_rst = '1' or rst_i_rx = '1')then
-        rd_ena <= '0';
-    elsif(rising_edge(clk_160))then
+    if(rising_edge(clk_160))then
         if(elink_locked = '1' and empty_elink_rx = '0')then
             rd_ena <= '1';
         else
