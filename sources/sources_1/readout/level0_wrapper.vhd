@@ -53,6 +53,7 @@ entity level0_wrapper is
         wr_accept       : in  std_logic; -- buffer acceptance window
         vmm_conf        : in  std_logic; -- high during VMM configuration
         daq_on_inhib    : out std_logic; -- prevent daq_on state before checking link health
+        all_ready       : out std_logic;
         ------------------------------------
         ---- Packet Formation Interface ----
         rd_ena_buff     : in  std_logic;
@@ -314,5 +315,8 @@ end process;
     vmm_cktk_vec(6) <= level_0;
     vmm_cktk_vec(7) <= level_0;
     vmm_cktk_vec(8) <= level_0;
+    all_ready       <= vmmWordReady_i(0) and vmmWordReady_i(1) and vmmWordReady_i(2) and
+                       vmmWordReady_i(3) and vmmWordReady_i(4) and vmmWordReady_i(5) and
+                       vmmWordReady_i(6) and vmmWordReady_i(7);
     
 end RTL;

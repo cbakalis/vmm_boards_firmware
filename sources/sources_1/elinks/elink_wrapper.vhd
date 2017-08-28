@@ -62,18 +62,21 @@ port(
     elink_locked    : in  std_logic;
     ---------------------------------
     ---- E-link Serial Interface ----
-    elink_tx        : out std_logic;  -- elink tx bus
-    elink_rx        : in  std_logic;  -- elink rx bus
+    elink_tx        : out std_logic;                    -- elink tx bus
+    elink_rx        : in  std_logic;                    -- elink rx bus
+    ---------------------------------
+    ------ Readout Interface --------
+    ro_rdy          : in  std_logic;                    -- every VMM has been read out
+    bitmask_null    : in  std_logic_vector(7 downto 0); -- which VMMs have data?
     ---------------------------------
     --------- PF Interface ----------
     din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
     din_last        : in  std_logic;                     -- last packet
-    elink_busy      : out std_logic;                     -- elink is sending DAQ data
-    wr_en_safe      : in  std_logic;                     -- it is safe to write to the DAQ FIFO
+    inhibit_pf      : out std_logic;                     -- pf inhibitor
     trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)
-    flush_pf        : in  std_logic;                     -- flush the FIFOs (from PF)
-    rst_pf          : in  std_logic;                     -- reset the driver module
     vmm_id          : in  std_logic_vector(2 downto 0);  -- vmm that is being read
+    pf_busy         : in  std_logic;                     -- pf is in the middle of readout
+    pf_rdy          : in  std_logic;                     -- pf is ready to write DAQ data
     wr_en_daq       : in  std_logic                      -- write enable from packet formation
     );
 end elink_wrapper;
@@ -107,14 +110,20 @@ component elink_daq_driver
     din_daq     : in  std_logic_vector(15 downto 0);
     wr_en_daq   : in  std_logic;
     trigger_cnt : in  std_logic_vector(15 downto 0);
-    wr_en_safe  : in  std_logic;
     vmm_id      : in  std_logic_vector(2 downto 0);
     last        : in  std_logic;
-    busy        : out std_logic;
+    pf_busy     : in  std_logic;
+    pf_rdy      : in  std_logic;
+    inhibit_pf  : out std_logic;
+    ---------------------------
+    ----- readout interface ---
+    all_rdy     : in  std_logic;
+    bitmask_null: in  std_logic_vector(7 downto 0);
     ---------------------------
     ------ elink inteface -----
     empty_elink : in  std_logic;
     wr_en_elink : out std_logic;
+    flush_elink : out std_logic;
     dout_elink  : out std_logic_vector(17 downto 0)
     );
 end component;
@@ -188,7 +197,7 @@ end component;
     signal flush_tx             : std_logic := '1';
     signal flush_tx_final       : std_logic := '1';
     signal rst_pf_i             : std_logic := '1';
-    signal flush_pf_i           : std_logic := '1';
+    signal flush_elink_i        : std_logic := '1';
     signal cnt_init_rx          : integer   := 0;
     signal cnt_init_tx          : integer   := 0;
 
@@ -208,7 +217,6 @@ end component;
     signal dout_elink2fifo      : std_logic_vector(15 downto 0) := (others => '0');
     signal half_full_rx         : std_logic := '0';
     signal driver_ena           : std_logic := '0';
-    signal driver_ena_xor       : std_logic := '0';
     signal rd_ena               : std_logic := '0';
     signal tester_ena           : std_logic := '0'; 
     
@@ -257,21 +265,27 @@ port map(
     ---------------------------
     ---- general interface ---- 
     clk_in      => user_clock,
-    fifo_flush  => flush_tx_final,
-    driver_ena  => driver_ena_xor,
+    fifo_flush  => flush_tx,
+    driver_ena  => driver_ena,
     ---------------------------
     ------- pf interface ------
     din_daq     => din_daq,
     wr_en_daq   => wr_en_daq,
     trigger_cnt => trigger_cnt,
-    wr_en_safe  => wr_en_safe,
     vmm_id      => vmm_id,
     last        => din_last,
-    busy        => elink_busy,
+    pf_busy     => pf_busy,
+    pf_rdy      => pf_rdy,
+    inhibit_pf  => inhibit_pf,
+    ---------------------------
+    ----- readout interface ---
+    all_rdy     => ro_rdy,
+    bitmask_null=> bitmask_null,
     ---------------------------
     ------ elink inteface -----
     empty_elink => empty_elink_tx,
     wr_en_elink => wr_en_elink_daq,
+    flush_elink => flush_elink_i,
     dout_elink  => data_elink_daq
     );
     
@@ -465,20 +479,10 @@ begin
         rst_i_rx_s1     <= rst_i_rx_s0;
     end if;
 end process;
-
--- inhibit pf commands when not in DAQ mode
-inhibPF_proc: process(daq_ena, rst_pf, flush_pf)
-begin
-    case daq_ena is
-    when '1' => rst_pf_i <= rst_pf; flush_pf_i <= flush_pf;
-    when '0' => rst_pf_i <= '0';    flush_pf_i <= '0';
-    end case;
-end process;
  
   tester_ena        <= elink_locked and pattern_ena;
   driver_ena        <= elink_locked and daq_ena;
-  driver_ena_xor    <= driver_ena xor rst_pf_i;
-  flush_tx_final    <= flush_tx or flush_pf_i;
+  flush_tx_final    <= flush_tx or flush_elink_i;
   
   sel_din(1)        <= pattern_ena;
   sel_din(0)        <= daq_ena;

@@ -587,15 +587,12 @@ architecture Behavioral of vmmFrontEnd is
     signal swap_rx              : std_logic := '0';
   
     signal pattern_enable       : std_logic := '0'; -- DEFAULT: disable pattern
-    signal daq_enable           : std_logic := '0'; -- DEFAULT: disable daq
+    signal daq_enable_vio       : std_logic := '0'; -- DEFAULT: disable daq
+    signal daq_enable_elink     : std_logic := '0'; -- DEFAULT: disable daq
     signal loopback_enable      : std_logic := '0'; -- DEFAULT: disable loopback
     
     signal elink_DAQ_tx         : std_logic := '0';
     signal elink_DAQ_rx         : std_logic := '0';
-    signal elink_busy           : std_logic := '0';
-    signal wr_en_safe           : std_logic := '0';
-    signal flush_elink          : std_logic := '0';
-    signal rst_elink            : std_logic := '0';
     signal trigger_cnt          : std_logic_vector(15 downto 0) := (others => '0');
     
     -------------------------------------------------
@@ -1008,10 +1005,10 @@ architecture Behavioral of vmmFrontEnd is
             linkHealth_bmsk : in std_logic_vector(8 downto 1);
             rst_FIFO        : out std_logic;
             
-            elink_busy      : in  std_logic; -- elink is busy sending
-            elink_flush     : out std_logic; -- flush the TX FIFOs
-            elink_rst       : out std_logic; -- reset the elink DAQ driver
-            elink_wr_rdy    : out std_logic; -- flag indicating elink DAQ driver can write to its FIFO
+--            elink_busy      : in  std_logic; -- elink is busy sending
+--            elink_flush     : out std_logic; -- flush the TX FIFOs
+--            elink_rst       : out std_logic; -- reset the elink DAQ driver
+--            elink_wr_rdy    : out std_logic; -- flag indicating elink DAQ driver can write to its FIFO
             trigger_cnt     : out std_logic_vector(15 downto 0);
             
             latency         : in std_logic_vector(15 downto 0);
@@ -1498,19 +1495,22 @@ architecture Behavioral of vmmFrontEnd is
         elink_locked    : in  std_logic;
         ---------------------------------
         ---- E-link Serial Interface ----
-        elink_tx        : out std_logic;  -- elink tx bus
-        elink_rx        : in  std_logic;  -- elink rx bus
+        elink_tx        : out std_logic;                    -- elink tx bus
+        elink_rx        : in  std_logic;                    -- elink rx bus
+        ---------------------------------
+        ------ Readout Interface --------
+        ro_rdy          : in  std_logic;                    -- every VMM has been read out
+        bitmask_null    : in  std_logic_vector(7 downto 0); -- which VMMs have data?
         ---------------------------------
         --------- PF Interface ----------
         din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
         din_last        : in  std_logic;                     -- last packet
-        elink_busy      : out std_logic;                     -- elink is sending DAQ data
-        wr_en_safe      : in  std_logic;                     -- it is safe to write to the DAQ FIFO
+        inhibit_pf      : out std_logic;                     -- pf inhibitor
         trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)
-        flush_pf        : in  std_logic;                     -- flush the FIFOs (from PF)
-        rst_pf          : in  std_logic;                     -- reset the driver module
         vmm_id          : in  std_logic_vector(2 downto 0);  -- vmm that is being read
-        wr_en_daq       : in  std_logic                      -- write enable from packet formation
+        pf_busy         : in  std_logic;                     -- pf is in the middle of readout
+        pf_rdy          : in  std_logic;                     -- pf is ready to write DAQ data
+        wr_en_daq       : in  std_logic                      -- write enable from packet formation  
         );
     end component;
     --25
@@ -2000,10 +2000,10 @@ packet_formation_instance: packet_formation
         linkHealth_bmsk => linkHealth_bmsk,
         rst_FIFO        => pf_rst_FIFO,
         
-        elink_busy      => elink_busy,  -- elink is busy sending
-        elink_flush     => flush_elink, -- flush the TX FIFOs
-        elink_rst       => rst_elink,   -- reset the elink DAQ driver
-        elink_wr_rdy    => wr_en_safe,  -- flag indicating elink DAQ driver can write to its FIFO
+--        elink_busy      => elink_busy,  -- elink is busy sending
+--        elink_flush     => flush_elink, -- flush the TX FIFOs
+--        elink_rst       => rst_elink,   -- reset the elink DAQ driver
+--        elink_wr_rdy    => wr_en_safe,  -- flag indicating elink DAQ driver can write to its FIFO
         trigger_cnt     => trigger_cnt,
 
         latency         => latency_conf,
@@ -2209,7 +2209,7 @@ DAQ_ELINK: elink_wrapper
         ----- General/VIO Interface -----
         user_clock      => userclk2,
         pattern_ena     => pattern_enable,  -- pattern data enabled by default, from VIO
-        daq_ena         => daq_enable,      -- from VIO
+        daq_ena         => daq_enable_elink,-- from VIO
         loopback_ena    => loopback_enable, -- from VIO
         glbl_rst        => rst_elink_glbl,  -- from VIO
         rst_tx          => rst_elink_tx,    -- from VIO and PF
@@ -2229,24 +2229,27 @@ DAQ_ELINK: elink_wrapper
         elink_tx        => elink_DAQ_tx,
         elink_rx        => elink_DAQ_rx,
         ---------------------------------
+        ------ Readout Interface --------
+        ro_rdy          => '0', -- add me
+        bitmask_null    => (others => '0'), -- add me
+        ---------------------------------
         --------- PF Interface ----------
         din_daq         => daq_data_out_i,
         wr_en_daq       => daq_wr_en_i,
         din_last        => end_packet_daq_int,
-        elink_busy      => elink_busy,
-        wr_en_safe      => wr_en_safe,
         trigger_cnt     => trigger_cnt,
-        flush_pf        => flush_elink,
-        rst_pf          => rst_elink,
+        inhibit_pf      => open, -- add me
+        pf_busy         => '0', -- add me
+        pf_rdy          => '0', -- add me
         vmm_id          => pf_vmmIdRo
-    );
+    ); 
     
 vio_elink_instance: vio_elink
     port map(
         clk             => userclk2,
         probe_in0(0)    => master_locked,
         probe_out0(0)   => pattern_enable,
-        probe_out1(0)   => daq_enable,
+        probe_out1(0)   => daq_enable_vio,
         probe_out2(0)   => loopback_enable,
         probe_out3(0)   => rst_elink_glbl,
         probe_out4(0)   => rst_elink_mmcm,
@@ -2730,6 +2733,7 @@ end process;
     pf_rst_final            <= pf_rst_flow or glbl_rst_i;
     glbl_fifo_init          <= not phy_rstn;
     rstFIFO_top             <= rstFIFO_flow or glbl_fifo_init;
+    daq_enable_elink        <= daq_enable_vio and daq_enable_i;
     
     -- configuration assertion
     vmm_cs_vec_obuf(1)  <= vmm_cs_all;

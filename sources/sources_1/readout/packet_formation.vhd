@@ -35,6 +35,7 @@
 -- 25.04.2017 Added vmm_driver module. (Christos Bakalis)
 -- 06.06.2017 Added ART header a handling (Paris)
 -- 24.08.2017 Added extra states and signals to interface with elink DAQ driver. (Christos Bakalis)
+--
 ---------------------------------------------------------------------------------------------------------
 
 library IEEE;
@@ -77,10 +78,10 @@ entity packet_formation is
         linkHealth_bmsk : in std_logic_vector(8 downto 1);
         rst_FIFO        : out std_logic;
         
-        elink_busy      : in  std_logic; -- elink is busy sending
-        elink_flush     : out std_logic; -- flush the TX FIFOs
-        elink_rst       : out std_logic; -- reset the elink DAQ driver
-        elink_wr_rdy    : out std_logic; -- flag indicating elink DAQ driver can write to its FIFO
+--        elink_busy      : in  std_logic; -- elink is busy sending
+--        elink_flush     : out std_logic; -- flush the TX FIFOs
+--        elink_rst       : out std_logic; -- reset the elink DAQ driver
+--        elink_wr_rdy    : out std_logic; -- flag indicating elink DAQ driver can write to its FIFO
         trigger_cnt     : out std_logic_vector(15 downto 0); 
         
         latency         : in std_logic_vector(15 downto 0);
@@ -126,12 +127,11 @@ architecture Behavioral of packet_formation is
     signal end_packet_int       : std_logic                     := '0';
     signal artValid             : std_logic                     := '0';
     signal trraw_synced125_prev : std_logic                     := '0';
-    signal clearValid           : std_logic                     := '0'; 
-    signal flag_busy            : std_logic                     := '0';  
+    signal clearValid           : std_logic                     := '0';  
 
     type stateType is (waitingForNewCycle, increaseCounter, waitForLatency, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
                        sendHeaderStep3, triggerVmmReadout, waitForData, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, 
-                       isUDPDone, isTriggerOff, S2, eventDone, waitForElink, waitBeforeReset, resetElink);
+                       isUDPDone, isTriggerOff, S2, eventDone);
     signal state            : stateType;
 
 --------------------  Debugging ------------------------------
@@ -214,10 +214,6 @@ begin
             drv_enable              <= '0';
             triggerVmmReadout_i     <= '0';
             end_packet_int          <= '0';
-            elink_flush             <= '0';
-            elink_rst               <= '0';
-            elink_wr_rdy            <= '0';
-            flag_busy               <= '0';
             state                   <= waitingForNewCycle;
         else
         case state is
@@ -231,23 +227,19 @@ begin
                 trigLatencyCnt          <= 0;
                 sel_cnt                 <= (others => '0');
                 rst_FIFO                <= '0';
-                elink_flush             <= '0';
-                elink_rst               <= '0';
-                elink_wr_rdy            <= '0';
-                flag_busy               <= '0';
                 if newCycle = '1' then
-                    pfBusy_i        <= '1';
                     state           <= increaseCounter;
                 end if;
                 
             when increaseCounter =>
                 debug_state     <= "00001";
+                pfBusy_i        <= '1';
                 eventCounter_i  <= eventCounter_i + 1;
                 state           <= waitForLatency;
                 
             when waitForLatency =>
                 debug_state <= "00010";
-                tr_hold             <= '1'; -- Prevent new triggers
+                tr_hold     <= '1'; -- Prevent new triggers
                 if(trigLatencyCnt > trigLatency and is_mmfe8 = '1')then 
                     state           <= S2;
                 elsif(trigLatencyCnt > trigLatency and is_mmfe8 = '0')then
@@ -260,9 +252,6 @@ begin
                 debug_state <= "00010";
 --                --tr_hold         <= '1';     -- Prevent new triggers
                 packLen_cnt     <= x"000";      -- Reset length count
-                elink_wr_rdy    <= '0';         -- about to write header. not safe to write@elink
-                elink_flush     <= '0';         -- release the resets
-                elink_rst       <= '0';
                 sel_wrenable    <= '0';
                 vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
                 state           <= captureEventID;
@@ -315,7 +304,7 @@ begin
             when triggerVmmReadout =>   -- Creates an 136ns pulse to trigger the readout if not at level0 mode
                                         
                 debug_state                 <= "00111";
-                elink_wr_rdy                <= '1'; -- now safe to write data to the elink DAQ driver FIFO
+                --elink_wr_rdy                <= '1'; -- now safe to write data to the elink DAQ driver FIFO
                 sel_cnt                     <= "110"; -- fix the counter to 4 to select the VMM data for the next steps
                 sel_wrenable                <= '1';   -- grant control to driver
                 if wait_Cnt < 30 and vmmReadoutMode = '0' then
@@ -368,34 +357,15 @@ begin
                 debug_state     <= "01101";
                 end_packet_int  <= '1';
                 if(is_mmfe8 = '1')then
-                    state       <= waitForElink; -- was eventDone
+                    state       <= eventDone;
                 else
                     state       <= isUDPDone;
-                end if;
-                
-            when waitForElink =>
-                debug_state     <= "01111";
-                end_packet_int  <= '0';
-                if(flag_busy = '0')then
-                    if(elink_busy = '1')then
-                        flag_busy <= '1'; -- elink is busy, raise the flag
-                    else
-                        flag_busy <= '0';
-                    end if;
-                    state <= waitForElink;
-                else
-                    if(elink_busy = '1')then -- still busy...stay. 
-                        state <= waitForElink;
-                    else
-                        state <= eventDone; -- time to move on.
-                    end if;
-                end if;  
+                end if; 
 
             when eventDone =>
                 debug_state     <= "01110";
                 end_packet_int  <= '0';
                 drv_enable      <= '0';
-                flag_busy       <= '0';
                 if vmmId_cnt = 7 then
                     vmmId_cnt   <= 0;
                     state       <= isUDPDone;
@@ -403,28 +373,9 @@ begin
                     vmmId_cnt    <= vmmId_cnt + 1;
                     sel_cnt      <= "000";
                     sel_wrenable <= '0';
-                    state        <= waitBeforeReset; -- was S2
+                    state        <= S2; -- was S2
                 end if;
-                
-            when waitBeforeReset =>
-                if(wait_cnt < 31)then
-                    wait_cnt <= wait_cnt + 1;
-                    state    <= waitBeforeReset;
-                else
-                    wait_cnt <= 0;
-                    state    <= resetElink;
-                end if;
-                
-            when resetElink =>
-                elink_flush <= '1';
-                elink_rst   <= '1';
-                if(wait_cnt < 31)then
-                    wait_cnt <= wait_cnt + 1;
-                    state    <= resetElink;
-                else
-                    wait_cnt <= 0;
-                    state    <= S2;
-                end if;
+        
                 
 --            when resetVMMs =>
 --                debug_state <= "01111";
@@ -443,8 +394,6 @@ begin
                 debug_state     <= "01110";
                 drv_enable      <= '0';
                 end_packet_int  <= '0';
-                elink_flush     <= '1';
-                elink_rst       <= '1';
                 rst_l0          <= '1'; -- reset the level0 buffers and the interface with packet_formation
                -- pfBusy_i        <= '0';
                 if (UDPDone = '1') then -- Wait for the UDP packet to be sent

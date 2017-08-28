@@ -34,6 +34,7 @@
 -- Controller ASIC Design Review Report" - 10/05/2016 AND "ATLAS NSW Electronics 
 -- Specification Component or Facility Name: ROC The Read Out Controller" - 11/24/2016
 -- (Christos Bakalis).
+-- 27.08.2017 Major changes. Breakdown to three different FSMs. (Christos Bakalis)
 --
 --------------------------------------------------------------------------------------
 library IEEE;
@@ -52,14 +53,20 @@ entity elink_daq_driver is
         din_daq     : in  std_logic_vector(15 downto 0);
         wr_en_daq   : in  std_logic;
         trigger_cnt : in  std_logic_vector(15 downto 0);
-        wr_en_safe  : in  std_logic;
         vmm_id      : in  std_logic_vector(2 downto 0);
         last        : in  std_logic;
-        busy        : out std_logic;
+        pf_busy     : in  std_logic;
+        pf_rdy      : in  std_logic;
+        inhibit_pf  : out std_logic;
+        ---------------------------
+        ----- readout interface ---
+        all_rdy     : in  std_logic;
+        bitmask_null: in  std_logic_vector(7 downto 0);
         ---------------------------
         ------ elink inteface -----
         empty_elink : in  std_logic;
         wr_en_elink : out std_logic;
+        flush_elink : out std_logic;
         dout_elink  : out std_logic_vector(17 downto 0)
     );
 end elink_daq_driver;
@@ -81,24 +88,51 @@ end component;
 
     signal rd_en            : std_logic := '0';
     signal dout_fifo        : std_logic_vector(15 downto 0) := (others => '0');
-    signal data_out         : std_logic_vector(15 downto 0) := (others => '0');
     signal fifo_full        : std_logic := '0';
-    signal fifo_empty       : std_logic := '0';
-    signal packet_part      : unsigned(2 downto 0) := (others => '0');    
-    signal hit_data_prv     : std_logic_vector(31 downto 0) := (others => '0');
-    signal chunk_flag       : std_logic := '1';
-    signal ena_cnt          : std_logic := '0';
-    signal vmm_bitmask_miss : std_logic_vector(7 downto 0) := (others => '0');
+    signal fifo_empty       : std_logic := '0';    
     signal len_cnt          : std_logic_vector(9 downto 0) := (others => '0');
     signal len_cnt_ug       : unsigned(9 downto 0) := (others => '0');
     signal wait_cnt         : unsigned(1 downto 0) := (others => '0');
+    signal wait_cnt_null    : unsigned(1 downto 0) := (others => '0');
     signal wr_en_daq_i      : std_logic := '0';
-    signal din_daq_i        : std_logic_vector(15 downto 0) := (others => '0');
+    signal din_daq_fifo     : std_logic_vector(15 downto 0) := (others => '0');
     signal empty_elink_i    : std_logic := '0';
     signal empty_elink_s    : std_logic := '0';
+    signal this_vmm_hit     : std_logic := '0';
 
+    signal flag_pack        : std_logic_vector(1 downto 0) := (others => '0');
+    signal flag_null        : std_logic_vector(1 downto 0) := (others => '0');
+    signal start_null       : std_logic := '0';
+    signal start_pack       : std_logic := '0';
+    signal null_done        : std_logic := '0';
+    signal pack_done        : std_logic := '0';
+    signal wait_flush       : unsigned(3 downto 0) := (others => '0');
+    signal fifo_flush_i     : std_logic := '0';
+    signal fifo_flush_final : std_logic := '0'; 
+    signal vmm_id_prv       : std_logic_vector(2 downto 0) := (others => '0');
+    signal busy_latched     : std_logic := '0';
+    
+    signal bcid             : std_logic_vector(11 downto 0) := (others => '0');
+    signal orb              : std_logic_vector(1 downto 0)  := (others => '0');
+    signal cnt_mop          : std_logic_vector(2 downto 0)  := (others => '0');
+    signal cnt_mop_null     : std_logic := '0';
+    signal P                : std_logic := '0';
+    signal N                : std_logic := '0';
+    signal tdo              : std_logic_vector(7 downto 0)  := (others => '0');
+    signal tdo_prv          : std_logic_vector(7 downto 0)  := (others => '0');
+    signal pdo              : std_logic_vector(9 downto 0)  := (others => '0');
+    signal channel_id       : std_logic_vector(5 downto 0)  := (others => '0');
+    signal rel_bcid         : std_logic_vector(2 downto 0)  := (others => '0');
+    
+    signal sent_one         : std_logic := '0';
+    signal wr_ena_pack      : std_logic := '0';
+    signal wr_ena_null      : std_logic := '0';
+    signal wr_en_fifo       : std_logic := '0';
+    signal inhibit_wr_fifo  : std_logic := '0';
+    signal data_out_pack    : std_logic_vector(15 downto 0)  := (others => '0');
+    signal data_out_null    : std_logic_vector(15 downto 0)  := (others => '0');
+    
     -- E-LINK EOP and SOP
-    signal elink_flag       : std_logic_vector(1 downto 0) := (others => '0');
     constant SOP            : std_logic_vector(1 downto 0) := "10";
     constant MOP            : std_logic_vector(1 downto 0) := "00";
     constant EOP            : std_logic_vector(1 downto 0) := "01";
@@ -110,13 +144,25 @@ end component;
     constant ROC_EOP        : std_logic_vector(7 downto 0) := "11011100"; -- K28.6
 
     -- state signals and attributes
-    type stateType is (ST_IDLE, ST_SOP_0, ST_SOP_1, ST_CHANGE_FLG, ST_WR_HDR_0, ST_WR_HDR_1, ST_CHK_FIFO, ST_REG_DATA_0, ST_REG_DATA_1,
-                       ST_CHK_CHUNK_FLG, ST_WR_DATA_0, ST_WR_DATA_1, ST_TRL_0, ST_TRL_1, ST_TRL_2, ST_EOP_0, ST_EOP_1,
-                       ST_WAIT, ST_DONE); 
-    signal state                        : stateType := ST_IDLE;
-    signal state_prv                    : stateType := ST_IDLE;
-    attribute FSM_ENCODING              : string;
-    attribute FSM_ENCODING of state     : signal is "ONE_HOT";
+    type stateType_master is (ST_IDLE, ST_CHK_ALL, ST_WR_NULL, ST_WAIT_RDY, ST_WAIT_PF,  ST_CHK_VMM, ST_WAIT_CHANGE,
+                              ST_WAIT_LAST, ST_REG_ID, ST_WAIT_ELINK, ST_FLUSH_PACK, ST_FLUSH_NULL, ST_CHK_VMM_ID);
+    signal state_master     : stateType_master := ST_IDLE;
+
+    type stateType_pack is   (ST_IDLE, ST_REG_HDR, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_SEND_HDR_4,
+                              ST_READ_DATA_0, ST_READ_DATA_1, ST_REG_DATA_0, ST_REG_DATA_1, ST_SEND_DATA_0, ST_SEND_DATA_1, ST_SEND_DATA_2,
+                              ST_CHK_FIFO, ST_WR_TRL_0, ST_WR_TRL_1, ST_WR_TRL_2, ST_WR_TRL_3, ST_WR_EOP_0, ST_WR_EOP_1, ST_DONE, ST_WAIT);
+                              
+    type stateType_null is (ST_IDLE, ST_SEND_EOP, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_WR_EOP_0, ST_WR_EOP_1, ST_DONE, ST_WAIT);
+
+    signal state_pack       : stateType_pack := ST_IDLE;
+    signal state_null       : stateType_null := ST_IDLE;
+    signal state_prv        : stateType_pack := ST_IDLE;
+    signal state_prv_null   : stateType_null := ST_IDLE;
+
+    attribute FSM_ENCODING  : string;
+    attribute FSM_ENCODING of state_master  : signal is "ONE_HOT";
+    attribute FSM_ENCODING of state_pack    : signal is "ONE_HOT";
+    attribute FSM_ENCODING of state_null    : signal is "ONE_HOT";
     
     attribute ASYNC_REG                      : string;
     attribute ASYNC_REG of empty_elink_i     : signal is "TRUE";
@@ -124,351 +170,653 @@ end component;
 
 begin
 
--- FSM that reads from the DAQ2Elink FIFO and writes to the Elink FIFO in ROC format
-FSM_DRV_proc: process(clk_in)
+------------------------------------------
+-------------- MASTER FSM ----------------
+------------------------------------------
+
+-- FSM that activates the respective sub-FSM to write a null event ROC header, 
+-- or a ROC data packet, and also interfaces with PF
+FSM_master_drv: process(clk_in)
 begin
     if(rising_edge(clk_in))then
         if(driver_ena = '0')then
-            elink_flag      <= SOP;
-            packet_part     <= "000";
-            rd_en           <= '0';
-            chunk_flag      <= '1';
-            wr_en_elink     <= '0';
-            busy            <= '0';
-            ena_cnt         <= '0';
-            hit_data_prv    <= (others => '0');
-            wait_cnt        <= (others => '0');
-            state_prv       <= ST_IDLE;
-            state           <= ST_IDLE;
+            inhibit_pf      <= '0';
+            start_null      <= '0';
+            start_pack      <= '0';
+            busy_latched    <= '0';
+            wait_flush      <= (others => '0');
+            fifo_flush_i    <= '0';
+            vmm_id_prv      <= (others => '0');
+            state_master    <= ST_IDLE;
         else
-            case state is
-    
-            -- wait for 'last' signal from PF to start sending data to the elinkFIFO
+            case state_master is
+
+            -- check if all readout modules have finished
             when ST_IDLE =>
-                elink_flag      <= SOP;
-                rd_en           <= '0';
-                packet_part     <= "000";
-                wr_en_elink     <= '0';
-                chunk_flag      <= '1';
-                busy            <= '0';
-                ena_cnt         <= '0';
-                hit_data_prv    <= (others => '0');
-                wait_cnt        <= (others => '0');
-                state_prv       <= ST_IDLE;
+                inhibit_pf      <= '1';
+                start_null      <= '0';
+                start_pack      <= '0';
+                busy_latched    <= '0';
+                wait_flush      <= (others => '0');
+                fifo_flush_i    <= '0';
+                vmm_id_prv      <= (others => '0');
+                if(all_rdy = '1')then
+                    state_master <= ST_CHK_ALL;
+                else
+                    state_master <= ST_IDLE;
+                end if;
+
+            -- check if VMMs have no data
+            when ST_CHK_ALL =>
+                if(bitmask_null = "11111111")then
+                    state_master <= ST_WR_NULL; -- go to no data cases
+                else
+                    state_master <= ST_CHK_VMM; -- go to send data cases
+                end if;
+
+            ----------------------------------
+            ------------ no data case -------
+            ----------------------------------
+
+            -- no VMMs have data, write a null event header
+            when ST_WR_NULL =>
+                start_null <= '1';
+                start_pack <= '0';
+                if(null_done = '1')then
+                    state_master <= ST_FLUSH_NULL;
+                else
+                    state_master <= ST_WR_NULL;
+                end if;
+
+            -- flush the elink FIFOs
+            when ST_FLUSH_NULL =>
+                start_null  <= '0';
+                if(fifo_flush_i = '0')then
+                    if(wait_flush = "1111")then
+                        fifo_flush_i    <= '1';
+                        wait_flush      <= (others => '0');
+                    else
+                        fifo_flush_i    <= '0';
+                        wait_flush      <= wait_flush + 1;
+                    end if;
+                    state_master <= ST_FLUSH_NULL;
+                else
+                    if(wait_flush = "1111")then
+                        fifo_flush_i    <= '0';
+                        wait_flush      <= (others => '0');
+                        state_master    <= ST_WAIT_PF;
+                    else
+                        fifo_flush_i    <= '1';
+                        wait_flush      <= wait_flush + 1;
+                    end if;
+                end if;  
+            ----------------------------------
+            ----------------------------------
+            ----------------------------------
+
+            ----------------------------------
+            --------- send data cases --------
+            ----------------------------------
+
+            -- some VMMs do have data, write a packet if this specific VMM does
+            when ST_CHK_VMM =>
+                inhibit_pf      <= '1';
+                wait_flush      <= (others => '0');
+                fifo_flush_i    <= '0';
+                if(this_vmm_hit = '0')then -- data in this one
+                    state_master <= ST_WAIT_RDY;
+                elsif(this_vmm_hit = '1')then -- no data in this one
+                    state_master <= ST_REG_ID;
+                else
+                    state_master <= ST_CHK_VMM;
+                end if;
+
+            -- register the VMM ID, or if this was the last VMM, wait for PF
+            when ST_REG_ID =>
+                vmm_id_prv   <= vmm_id;
+                inhibit_pf   <= '0'; -- release the PF inhibitor, but don't let any data get into our FIFO
+                if(vmm_id = "111")then
+                    state_master <= ST_WAIT_PF;
+                else
+                    state_master <= ST_WAIT_CHANGE;
+                end if;
+
+            -- wait for PF to cycle through, then proceed to another check 
+            when ST_WAIT_CHANGE =>
+                if(vmm_id_prv /= vmm_id)then
+                    state_master <= ST_CHK_VMM;
+                else
+                    state_master <= ST_WAIT_CHANGE;
+                end if;
+
+            -- wait for PF to write the header to the UDP
+            when ST_WAIT_RDY =>
+                inhibit_pf <= '1';
+                if(pf_rdy = '1')then
+                    state_master <= ST_WAIT_LAST;
+                else
+                    state_master <= ST_WAIT_RDY;
+                end if;    
+
+            -- release the PF inhibitor and wait for all VMM data to be written in the FIFO
+            when ST_WAIT_LAST =>
+                inhibit_pf <= '0'; -- release the PF inhibitor and let data get into our FIFO
                 if(last = '1')then
-                    state       <= ST_SOP_0;
+                    state_master <= ST_WAIT_ELINK;
                 else
-                    state       <= ST_IDLE;
+                    state_master <= ST_WAIT_LAST;
                 end if;
 
-            -- e-link SOP states ---
-            ------------------------
-
-            -- write the e-link SOP
-            when ST_SOP_0 =>
-                busy        <= '1';
-                wr_en_elink <= '1';
-                state       <= ST_SOP_1;
-
-            when ST_SOP_1 =>
-                wr_en_elink <= '0';
-                rd_en       <= '1';   -- get the vmm level0 header out
-                state_prv   <= ST_SOP_1;
-                state       <= ST_WAIT; -- ST_CHANGE_FLG
-
-            when ST_CHANGE_FLG =>
-                wait_cnt    <= (others => '0');
-                elink_flag  <= MOP;
-                rd_en       <= '0';
-                state_prv   <= ST_CHANGE_FLG;
-                state       <= ST_WAIT; -- ST_WR_HDR_0
-
-
-            --- ROC header states --
-            ------------------------
-
-            -- write the ROC "hit data" header (1/2)
-            when ST_WR_HDR_0 =>
-                wait_cnt    <= (others => '0');
-                rd_en       <= '0';
-                wr_en_elink <= '1';
-                state_prv   <= ST_WR_HDR_0;
-                state       <= ST_WAIT;
-                --if(packet_part = "000")then  -- select the next part
-                --    state   <= ST_WAIT; -- ST_WR_HDR_1
-                --elsif(packet_part = "001")then   -- select the next part
-                --    state   <= ST_WAIT; -- ST_WR_HDR_1
-                --else
-                --    state   <= ST_WAIT;  -- ST_CHK_FIFO, all three header chunks written
-                --end if;
-
-            when ST_WR_HDR_1 =>
-                wr_en_elink <= '0';
-                wait_cnt    <= (others => '0');
-                packet_part <= packet_part + 1; -- write next part of header
-                state_prv   <= ST_WR_HDR_1;
-                state       <= ST_WAIT; -- ST_WR_HDR_0
-
-
-            -- ROC hit data states -
-            ------------------------
-
-            -- check the FIFO first
-            when ST_CHK_FIFO =>
-                wr_en_elink <= '0';
-                wait_cnt    <= (others => '0');
-                ena_cnt     <= '1'; -- enable the hit data length counter
-                packet_part <= "011";
-                if(fifo_empty = '1')then
-                    state   <= ST_TRL_0;
+            -- activate the packet writing FSM and hold PF until done writing+sending the packet
+            when ST_WAIT_ELINK =>
+                inhibit_pf <= '1';
+                start_null <= '0';
+                start_pack <= '1'; 
+                if(pack_done = '1' and empty_elink_s = '1' and fifo_empty = '1')then
+                    state_master <= ST_FLUSH_PACK;
                 else
-                    state   <= ST_REG_DATA_0;
+                    state_master <= ST_WAIT_ELINK;
                 end if;
 
-            -- read the first 16-bit hit data word
-            when ST_REG_DATA_0 =>
-                rd_en       <= '1';
-                chunk_flag  <= not chunk_flag; -- initially from one to zero
-                state_prv   <= ST_REG_DATA_0;
-                if(fifo_empty = '0')then
-                    state   <= ST_WAIT; -- ST_REG_DATA_1
-                else -- error!
-                    state   <= ST_DONE;
-                end if;
-
-            when ST_REG_DATA_1 =>
-                rd_en       <= '0';
-                wait_cnt    <= (others => '0');
-                state       <= ST_CHK_CHUNK_FLG;
-                if(chunk_flag = '0')then -- read and register the first part
-                    hit_data_prv(31 downto 16)  <= dout_fifo;
-                else                     -- read and register the second part
-                    hit_data_prv(15 downto 0)   <= dout_fifo;
-                end if;
-
-            when ST_CHK_CHUNK_FLG =>
-                if(chunk_flag = '0')then
-                    state <= ST_REG_DATA_0; -- more to read and register
+            -- wait before flushing, then flush, then go back to check the VMM
+            when ST_FLUSH_PACK =>
+                start_pack  <= '0';
+                if(fifo_flush_i = '0')then
+                    if(wait_flush = "1111")then
+                        fifo_flush_i    <= '1';
+                        wait_flush      <= (others => '0');
+                    else
+                        fifo_flush_i    <= '0';
+                        wait_flush      <= wait_flush + 1;
+                    end if;
+                    state_master <= ST_FLUSH_PACK;
                 else
-                    state <= ST_WR_DATA_0;  -- time to write
+                    if(wait_flush = "1111")then
+                        fifo_flush_i    <= '0';
+                        wait_flush      <= (others => '0');
+                        state_master    <= ST_CHK_VMM_ID;
+                    else
+                        fifo_flush_i    <= '1';
+                        wait_flush      <= wait_flush + 1;
+                    end if;
                 end if;
 
-            when ST_WR_DATA_0 =>
-                wr_en_elink <= '1';
-                wait_cnt    <= (others => '0');
-                state_prv   <= ST_WR_DATA_0;
-                if(packet_part = "011")then
-                    state       <= ST_WAIT; -- ST_WR_DATA_1;
-                elsif(packet_part = "100")then
-                    state       <= ST_WAIT; -- ST_CHK_FIFO;
+            -- has the last VMM sent its data?
+            when ST_CHK_VMM_ID =>
+                if(vmm_id = "111")then
+                    state_master <= ST_WAIT_PF;
                 else
-                    state       <= ST_DONE;
+                    state_master <= ST_REG_ID;
                 end if;
 
-            when ST_WR_DATA_1 =>
-                wr_en_elink <= '0';
-                wait_cnt    <= (others => '0');
-                packet_part <= packet_part + 1;
-                state_prv   <= ST_WR_DATA_1;
-                state       <= ST_WAIT; -- ST_WR_DATA_0
+            ----------------------------
+            -- last state to wait for PF
 
-
-            -- ROC trailer part ----
-            ------------------------
-            when ST_TRL_0 =>
-                packet_part <= "101";
-                state_prv   <= ST_TRL_0;
-                state       <= ST_WAIT; -- ST_TRL_1
-
-            when ST_TRL_1 =>
-                wr_en_elink <= '1';
-                wait_cnt    <= (others => '0');
-                state_prv   <= ST_TRL_1;
-                if(packet_part = "101")then
-                    state <= ST_WAIT; -- ST_TRL_2
-                elsif(packet_part = "110")then
-                    state <= ST_WAIT; -- ST_TRL_2
-                elsif(packet_part = "111")then -- all written
-                    state <= ST_WAIT; -- ST_EOP_0
-                else -- error!
-                    state <= ST_DONE;
-                end if;
-
-            when ST_TRL_2 =>
-                wr_en_elink <= '0';
-                wait_cnt    <= (others => '0');
-                packet_part <= packet_part + 1;
-                state_prv   <= ST_TRL_2;
-                state       <= ST_WAIT; -- ST_TRL_1
-
-
-            -- e-link EOP states ---
-            ------------------------
-
-            when ST_EOP_0 =>
-                wr_en_elink <= '0';
-                wait_cnt    <= (others => '0');
-                elink_flag  <= EOP;
-                state_prv   <= ST_EOP_0;
-                state       <= ST_WAIT; -- ST_EOP_1
-
-            when ST_EOP_1 =>
-                wr_en_elink <= '1';
-                state       <= ST_DONE;
-
-            ----- misc states ------
-            ------------------------
-
-            -- stay here until elink is done
-            when ST_DONE =>
-                wr_en_elink <= '0';
-                wait_cnt    <= (others => '0');
-                if(empty_elink_s = '1')then
-                    state <= ST_IDLE;
+            -- wait here unti PF is on idle and the readout modules have been reset
+            when ST_WAIT_PF =>
+                inhibit_pf  <= '0'; -- release the PF inhibitor and wait for its FSM to go back to IDLE
+                start_null  <= '0';
+                start_pack  <= '0';
+                if(busy_latched = '0')then
+                    if(pf_busy = '1')then
+                        busy_latched <= '1';
+                    else
+                        busy_latched <= '0';
+                    end if;
+                    state_master <= ST_WAIT_PF;
                 else
-                    state <= ST_DONE;
+                    if(pf_busy = '0')then
+                        state_master <= ST_IDLE;
+                    else
+                        state_master <= ST_WAIT_PF;
+                    end if;
                 end if;
 
-            -- stay here for some cycles to stablize MUX and FIFO bus
-            when ST_WAIT =>
-                rd_en       <= '0';
-                wr_en_elink <= '0';
-                if(wait_cnt = "11")then
-                    case state_prv is
-                    when ST_SOP_1       => state <= ST_CHANGE_FLG;
-                    when ST_CHANGE_FLG  => state <= ST_WR_HDR_0;
-                    when ST_WR_HDR_0    => if(packet_part = "010")then state <= ST_CHK_FIFO; else state <= ST_WR_HDR_1; end if;
-                    when ST_WR_HDR_1    => state <= ST_WR_HDR_0;
-                    when ST_WR_DATA_1   => state <= ST_WR_DATA_0;
-                    when ST_REG_DATA_0  => state <= ST_REG_DATA_1;
-                    when ST_WR_DATA_0   => if(packet_part = "011")then state <= ST_WR_DATA_1; else state <= ST_CHK_FIFO; end if;
-                    when ST_TRL_0       => state <= ST_TRL_1;
-                    when ST_TRL_1       => if(packet_part = "111")then state <= ST_EOP_0; else state <= ST_TRL_2; end if; 
-                    when ST_TRL_2       => state <= ST_TRL_1;
-                    when ST_EOP_0       => state <= ST_EOP_1;
-                    when others         => state <= ST_DONE; --error!
-                    end case;
-                else
-                    wait_cnt <= wait_cnt + 1;
-                end if;
-                
             when others =>
-                elink_flag      <= SOP;
-                packet_part     <= "000";
-                rd_en           <= '0';
-                chunk_flag      <= '1';
-                wr_en_elink     <= '0';
-                busy            <= '0';
-                ena_cnt         <= '0';
-                hit_data_prv    <= (others => '0');
-                wait_cnt        <= (others => '0');
-                state_prv       <= ST_IDLE;
-                state           <= ST_IDLE;
-    
+                inhibit_pf      <= '0';
+                start_null      <= '0';
+                start_pack      <= '0';
+                wait_flush      <= (others => '0');
+                fifo_flush_i    <= '0';
+                vmm_id_prv      <= (others => '0');
+                state_master    <= ST_IDLE;
+
             end case;
         end if;
     end if;
 end process;
 
-sel_dout: process(elink_flag, packet_part, dout_fifo, trigger_cnt, hit_data_prv, vmm_bitmask_miss, len_cnt)
-begin
-    case elink_flag is
-    when SOP    => data_out <= (others => '0');
-    when MOP    => 
-        case packet_part is
 
-        -- ROC HEADER 
-        when "000"  => data_out <= ROC_SOP & x"00";
-                    --               SOP   &   padding 
-        when "001"  => data_out <= "00" & dout_fifo(13 downto 12) & dout_fifo(11 downto 0);
-                    --              T|0 &           ORB           &      BCID        (T is zero because TDC is included later on)
-        when "010"  => data_out <= trigger_cnt;
-                    --                   16
-        -- ROC DATA
-        when "011"  => data_out <= hit_data_prv(30) & hit_data_prv(3) & hit_data_prv(2 downto 0) & vmm_id & hit_data_prv(27 downto 20);
-                    --                   P          &       N         &         rel_bcid         &  vmmId &    channel_id&pdo(2 first MSB)
-        when "100"  => data_out <= hit_data_prv(19 downto 4);
-                    --             pdo(rest of word) & tdo
-
-        -- ROC TRAILER
-        when "101"  => data_out <= "00" & vmm_bitmask_miss & "0000" & len_cnt(9 downto 8);
-                    --             E|TO &  missing VMMs    &  L0_ID   &   hit length counter (2 first MSB) (L0_ID is unused)
-        when "110"  => data_out <= len_cnt(7 downto 0)          & x"00";
-                    --           hit length cnt(rest of word)   & bitmask (unused)
-        when "111"  => data_out <= x"00" & ROC_EOP;
-                    --           padding & EOP
-        when others => null;    
-        end case;
-    when EOP    => data_out <= (others => '0');
-    when others => data_out <= (others => '0');
-    end case;
-end process;
-
--- process that counts hit data
-count_hit_proc: process(clk_in)
+------------------------------------------
+-------------- FSM HIT PACKET ------------
+------------------------------------------
+-- FSM that writes a ROC e-link packet
+FSM_packet_drv: process(clk_in)
 begin
     if(rising_edge(clk_in))then
-        if(ena_cnt = '1')then
-            if(rd_en = '1' and chunk_flag = '0')then -- increment once every two rd_ena
-                len_cnt_ug <= len_cnt_ug + 1;
-            else
-                len_cnt_ug <= len_cnt_ug;
-            end if;
+        if(start_pack = '0')then
+            rd_en       <= '0';
+            flag_pack   <= SOP;
+            wr_ena_pack <= '0';
+            sent_one    <= '0';
+            pack_done   <= '0';
+            wait_cnt    <= (others => '0');
+            cnt_mop     <= (others => '0');
+            state_pack  <= ST_IDLE;
         else
-            len_cnt_ug <= (others => '0');
+            case state_pack is
+
+            -- activated, read the first word
+            when ST_IDLE =>
+                rd_en       <= '1';
+                flag_pack   <= SOP;
+                state_prv   <= ST_IDLE;
+                state_pack  <= ST_WAIT; -- to ST_REG_HDR
+
+            -- register the header and write the elink SOP
+            when ST_REG_HDR =>
+                wr_ena_pack <= '1';
+                bcid        <= dout_fifo(11 downto 0);
+                orb         <= dout_fifo(13 downto 12);
+                state_prv   <= ST_REG_HDR;
+                state_pack  <= ST_WAIT; -- to ST_SEND_HDR_0
+
+            -----------------------------------------------
+            -- start sending the roc header
+            when ST_SEND_HDR_0 =>
+                wr_ena_pack <= '0';
+                flag_pack   <= MOP;
+                state_prv   <= ST_SEND_HDR_0;
+                state_pack  <= ST_WAIT; -- to ST_SEND_HDR_1
+
+            when ST_SEND_HDR_1 =>
+                wr_ena_pack <= '1';
+                state_prv   <= ST_SEND_HDR_1;
+                state_pack  <= ST_WAIT; -- to ST_SEND_HDR_2
+
+            when ST_SEND_HDR_2 =>
+                wr_ena_pack <= '0';
+                state_prv   <= ST_SEND_HDR_2;
+                state_pack  <= ST_WAIT; -- to ST_SEND_HDR_3
+
+            when ST_SEND_HDR_3 =>
+                wr_ena_pack <= '0';
+                cnt_mop     <= "001";
+                state_prv   <= ST_SEND_HDR_3;
+                state_pack  <= ST_WAIT; -- to ST_SEND_HDR_4
+
+            when ST_SEND_HDR_4 =>
+                wr_ena_pack <= '1';
+                state_prv   <= ST_SEND_HDR_4;
+                state_pack  <= ST_WAIT; -- to ST_READ_DATA_0
+            -- roc header has been sent by now
+            ------------------------------------------------
+
+            ------------------------------------------------
+            -- start sending the data
+            -- pass the first hit word to the bus
+            when ST_READ_DATA_0 =>
+                rd_en       <= '1';
+                cnt_mop     <= "010";
+                state_prv   <= ST_READ_DATA_0;
+                state_pack  <= ST_WAIT; -- to ST_REG_DATA_0
+
+            -- register the first hit word
+            when ST_REG_DATA_0 =>
+                P               <= dout_fifo(14);
+                channel_id      <= dout_fifo(11 downto 6);
+                pdo(9 downto 4) <= dout_fifo(5 downto 0);
+                state_prv       <= ST_REG_DATA_0;
+                state_pack      <= ST_WAIT; -- to ST_READ_DATA_1
+
+            -- pass the second hit word to the bus, and increment the hit counter
+            when ST_READ_DATA_1 =>
+                rd_en       <= '1';
+                len_cnt_ug  <= len_cnt_ug + 1;
+                state_prv   <= ST_READ_DATA_1;
+                state_pack  <= ST_WAIT; -- to ST_REG_DATA_1
+
+            -- register the second hit word
+            when ST_REG_DATA_1 =>
+                pdo(3 downto 0) <= dout_fifo(15 downto 12);
+                tdo             <= dout_fifo(11 downto 4);
+                N               <= dout_fifo(3);
+                rel_bcid        <= dout_fifo(2 downto 0);
+                state_prv       <= ST_REG_DATA_1;
+                state_pack      <= ST_WAIT;  -- to ST_SEND_DATA_0
+
+            -- write the first word
+            when ST_SEND_DATA_0 =>
+                wr_ena_pack <= '1';
+                state_prv   <= ST_SEND_DATA_0; 
+                state_pack  <= ST_WAIT; -- to ST_SEND_DATA_1
+
+            -- select the second chunk of the data
+            when ST_SEND_DATA_1 =>
+                cnt_mop     <= "011";
+                state_prv   <= ST_SEND_DATA_1;
+                state_pack  <= ST_WAIT;  -- to ST_SEND_DATA_2
+
+            -- write the second chunk
+            when ST_SEND_DATA_2 =>
+                wr_ena_pack <= '1';
+                state_pack  <= ST_CHK_FIFO;
+
+            -- check the FIFO state to see if we are done
+            when ST_CHK_FIFO =>
+                wr_ena_pack <= '0';
+                sent_one    <= '1'; -- flag that indicates one packet has been sent
+                tdo_prv     <= tdo;
+                state_prv   <= ST_CHK_FIFO;
+                if(fifo_empty = '1')then
+                    state_pack <= ST_WR_TRL_0;
+                else
+                    state_pack <= ST_WAIT; -- to ST_READ_DATA_0
+                end if;
+            -- roc data have been sent by now
+            ------------------------------------------------
+
+            -----------------------------------------------
+            -- start sending the roc trailer
+            when ST_WR_TRL_0 =>
+                state_prv   <= ST_WR_TRL_0;
+                state_pack  <= ST_WAIT; -- to ST_WR_TRL_1
+
+            when ST_WR_TRL_1 =>
+                state_prv   <= ST_WR_TRL_1;
+                state_pack  <= ST_WAIT; -- to ST_WR_TRL_2
+                if(cnt_mop = "011")then
+                    cnt_mop <= "100";
+                elsif(cnt_mop = "100")then
+                    cnt_mop <= "101";
+                elsif(cnt_mop = "101")then
+                    cnt_mop <= "110";
+                else null;
+                end if;
+
+            when ST_WR_TRL_2 =>
+                wr_ena_pack <= '1';
+                state_prv   <= ST_WR_TRL_2;
+                state_pack  <= ST_WAIT; -- to ST_WR_TRL_1
+
+            when ST_WR_TRL_3 =>
+                state_prv   <= ST_WR_TRL_3;
+                if(cnt_mop = "110")then
+                    state_pack <= ST_WAIT; -- to ST_WR_EOP_0
+                else
+                    state_pack <= ST_WR_TRL_1;
+                end if;
+            -- roc trailer has been sent by now
+            ------------------------------------------------
+
+            -- final states....
+            when ST_WR_EOP_0 =>
+                flag_pack   <= EOP;
+                state_prv   <= ST_WR_EOP_0;
+                state_pack  <= ST_WAIT; -- to ST_WR_EOP_1
+
+            when ST_WR_EOP_1 =>
+                wr_ena_pack <= '1';
+                state_prv   <= ST_WR_EOP_1;
+                state_pack  <= ST_DONE;
+
+            -- wait here until reset by the master FSM of this component
+            when ST_DONE =>
+                wr_ena_pack <= '0';
+                pack_done   <= '1';
+            -----------------------------------------------
+
+            -- generic state that waits
+            when ST_WAIT =>
+                rd_en       <= '0';
+                wr_ena_pack <= '0';
+                wait_cnt    <= wait_cnt + 1;
+                if(wait_cnt = "11")then
+                    case state_prv is
+                    when ST_IDLE        => state_pack <= ST_REG_HDR;
+                    when ST_REG_HDR     => state_pack <= ST_SEND_HDR_0;
+                    when ST_SEND_HDR_0  => state_pack <= ST_SEND_HDR_1;
+                    when ST_SEND_HDR_1  => state_pack <= ST_SEND_HDR_2;
+                    when ST_SEND_HDR_2  => state_pack <= ST_SEND_HDR_3;
+                    when ST_SEND_HDR_3  => state_pack <= ST_SEND_HDR_4;
+                    when ST_SEND_HDR_4  => state_pack <= ST_READ_DATA_0;
+                    when ST_READ_DATA_0 => state_pack <= ST_REG_DATA_0;
+                    when ST_REG_DATA_0  => state_pack <= ST_READ_DATA_1;
+                    when ST_READ_DATA_1 => state_pack <= ST_REG_DATA_1;
+                    when ST_REG_DATA_1  => state_pack <= ST_SEND_DATA_0;
+                    when ST_SEND_DATA_0 => state_pack <= ST_SEND_DATA_1;
+                    when ST_SEND_DATA_1 => state_pack <= ST_SEND_DATA_2;
+                    when ST_WR_TRL_0    => state_pack <= ST_WR_TRL_1;
+                    when ST_WR_TRL_1    => state_pack <= ST_WR_TRL_2;
+                    when ST_WR_TRL_2    => state_pack <= ST_WR_TRL_3;
+                    when ST_WR_TRL_3    => state_pack <= ST_WR_EOP_0;
+                    when ST_WR_EOP_0    => state_pack <= ST_WR_EOP_1;
+                    when ST_CHK_FIFO    => state_pack <= ST_READ_DATA_0;
+                    when ST_WR_EOP_1    => state_pack <= ST_DONE;
+                    when others         => state_pack <= ST_DONE; --error!
+                    end case;
+                else
+                    state_pack <= ST_WAIT;
+                end if;
+
+            when others =>
+                rd_en       <= '0';
+                flag_pack   <= SOP;
+                wr_ena_pack <= '0';
+                sent_one    <= '0';
+                pack_done   <= '0';
+                wait_cnt    <= (others => '0');
+                cnt_mop     <= (others => '0');
+                state_pack  <= ST_IDLE;
+
+            end case;
         end if;
     end if;
 end process;
 
--- process that asserts the missing vmm bitmask
-vmm_miss_proc: process(vmm_id)
+-- what to send from the packet forming FSM?
+sel_dout_pack: process(flag_pack, cnt_mop, orb, bcid, trigger_cnt, P, N, rel_bcid, vmm_id, tdo_prv, channel_id, pdo,
+                  bitmask_null, len_cnt, sent_one)
 begin
-    case vmm_id is
-    when "000"  => vmm_bitmask_miss <= "01111111";
-    when "001"  => vmm_bitmask_miss <= "10111111";
-    when "010"  => vmm_bitmask_miss <= "11011111";
-    when "011"  => vmm_bitmask_miss <= "11101111";
-    when "100"  => vmm_bitmask_miss <= "11110111";
-    when "101"  => vmm_bitmask_miss <= "11111011";
-    when "110"  => vmm_bitmask_miss <= "11111101";
-    when "111"  => vmm_bitmask_miss <= "11111110";
-    when others => vmm_bitmask_miss <= "11111111";
+    case flag_pack is
+    when SOP    => data_out_pack <= (others => '0');
+    when MOP    => 
+        case cnt_mop is
+
+        -- ROC HEADER 
+        when "000"  =>  data_out_pack <= ROC_SOP & "00" & orb & bcid(11 downto 8);
+                    --                     SOP   & T|0  & orb & bcid(first 4 MSB) (T is zero because TDC/TDO is included later on)
+        when "001"  =>  data_out_pack <= bcid(7 downto 0) & trigger_cnt(15 downto 8);
+                    --                    bcid(rest)      & L1ID(first 8 MSB)
+        -- ROC DATA
+        when "010"  =>  if(sent_one = '0')then
+                            data_out_pack <= trigger_cnt(7 downto 0) & P & N & rel_bcid & vmm_id;
+                    --                          L1DC(rest)
+                        else
+                            data_out_pack <= tdo_prv & P & N & rel_bcid & vmm_id;
+                    --                  previous TDO       (select the appropriate first byte...)
+                        end if;
+        when "011"  =>  data_out_pack <= channel_id & pdo;
+
+        -- ROC TRAILER
+        when "100"  =>  data_out_pack <= tdo_prv & "00" & bitmask_null(7 downto 2);
+                    --             previous TDO  & E|TO & bitmask(6 first MSB)
+        when "101"  =>  data_out_pack <= bitmask_null(1 downto 0) & "0000" & len_cnt;
+                    --                       bitmask(rest)        & L0ID(unused) & hit length
+        when "110"  =>  data_out_pack <= "00000000" & ROC_EOP;
+                    --             checksum(unused) & ROC_EOP
+        when others => null;    
+        end case;
+    when EOP    => data_out_pack <= (others => '0');
+    when others => data_out_pack <= (others => '0');
     end case;
 end process;
 
--- process that asserts wr_en from PF only when vmm data are being written
--- and registers the daq data. also synchronizes the FIFO empty signal
-wr_en_daq_proc: process(clk_in)
+
+
+------------------------------------------
+-------------- FSM NULL HEADER -----------
+------------------------------------------
+
+-- FSM that writes a null ROC e-link packet
+FSM_null_drv: process(clk_in)
 begin
     if(rising_edge(clk_in))then
+        if(start_null = '0')then
+            wr_ena_null     <= '0';
+            cnt_mop_null    <= '0';
+            null_done       <= '0';
+            flag_null       <= SOP;
+            wait_cnt_null   <= (others => '0');
+            state_null      <= ST_IDLE;
+        else
+            case state_null is
+            when ST_IDLE =>
+                flag_null       <= SOP;
+                state_prv_null  <= ST_IDLE;
+                state_null      <= ST_WAIT; -- to ST_SEND_EOP
 
-        din_daq_i       <= din_daq; -- register the daq data
-        empty_elink_i   <= empty_elink; -- sync the empty signal
-        empty_elink_s   <= empty_elink_i;
+            when ST_SEND_EOP =>
+                wr_ena_null     <= '1';
+                state_prv_null  <= ST_SEND_EOP;
+                state_null      <= ST_WAIT;
 
-        case wr_en_safe is
-        when '1'    => wr_en_daq_i <= wr_en_daq;
-        when '0'    => wr_en_daq_i <= '0';
-        when others => wr_en_daq_i <= '0';
-        end case;
+            when ST_SEND_HDR_0 =>
+                flag_null       <= MOP;
+                state_prv_null  <= ST_SEND_HDR_0;
+                state_null      <= ST_WAIT; -- to ST_SEND_HDR_1
 
+            when ST_SEND_HDR_1 =>
+                wr_ena_null     <= '1';
+                state_prv_null  <= ST_SEND_HDR_1;
+                state_null      <= ST_WAIT; -- to ST_SEND_HDR_2
+
+            when ST_SEND_HDR_2 =>
+                cnt_mop_null    <= '1';
+                state_prv_null  <= ST_SEND_HDR_2;
+                state_null      <= ST_WAIT; -- to ST_SEND_HDR_3
+
+            when ST_SEND_HDR_3 =>
+                wr_ena_null     <= '1';
+                state_prv_null  <= ST_SEND_HDR_3;
+                state_null      <= ST_WAIT; -- to ST_WR_EOP_0
+
+            when ST_WR_EOP_0 =>
+                flag_null       <= EOP;
+                state_prv_null  <= ST_WR_EOP_0;
+                state_null      <= ST_WAIT; -- to ST_WR_EOP_1
+
+            when ST_WR_EOP_1 =>
+                wr_ena_null     <= '1';
+                state_prv_null  <= ST_WR_EOP_1;
+                state_null      <= ST_WAIT; -- to ST_DONE
+
+            -- stay here until the reset from the master FSM
+            when ST_DONE =>
+                wr_ena_null     <= '0';
+                null_done       <= '1';
+
+            -- generic state that waits
+            when ST_WAIT =>
+                wr_ena_null    <= '0';
+                wait_cnt_null  <= wait_cnt_null + 1;
+                if(wait_cnt_null = "11")then
+                    case state_prv_null is
+                    when ST_IDLE        => state_null <= ST_SEND_EOP;
+                    when ST_SEND_EOP    => state_null <= ST_SEND_HDR_0;
+                    when ST_SEND_HDR_0  => state_null <= ST_SEND_HDR_1;
+                    when ST_SEND_HDR_1  => state_null <= ST_SEND_HDR_2;
+                    when ST_SEND_HDR_2  => state_null <= ST_SEND_HDR_3;
+                    when ST_SEND_HDR_3  => state_null <= ST_WR_EOP_0;
+                    when ST_WR_EOP_0    => state_null <= ST_WR_EOP_1;
+                    when ST_WR_EOP_1    => state_null <= ST_DONE;
+                    when others         => state_null <= ST_DONE; --error!
+                    end case;
+                else
+                    state_null <= ST_WAIT;
+                end if;
+                
+            when others =>
+                wr_ena_null     <= '0';
+                cnt_mop_null    <= '0';
+                null_done       <= '0';
+                wait_cnt_null   <= (others => '0');
+                state_null      <= ST_IDLE;
+            end case;
+        end if;
     end if;
 end process;
 
+-- what to send out from the null header FSM?
+sel_dout_null: process(flag_null, cnt_mop_null, trigger_cnt)
+begin
+    case flag_null is
+    when SOP    => data_out_null <= (others => '0');
+    when MOP    => 
+        case cnt_mop_null is
+        when '0'    => data_out_null <= ROC_SOP & "01" & "000111";
+                    --                  SOP     & flags & ROC_ID
+        when '1'    => data_out_null <= trigger_cnt(15 downto 8) & ROC_EOP;
+                    --                   8 first MSB of L1ID     & EOP
+        when others => null;    
+        end case;
+    when EOP    => data_out_null <= (others => '0');
+    when others => data_out_null <= (others => '0');
+    end case;
+end process;
+
+-- final synchronous multiplexer before the e-link FIFO pins
+sel_dout_proc: process(clk_in)
+begin
+    if(rising_edge(clk_in))then
+        if(start_null = '1')then
+            dout_elink  <= flag_null & data_out_null;
+            wr_en_elink <= wr_ena_null;
+        elsif(start_pack = '1')then
+            dout_elink  <= flag_pack & data_out_pack;
+            wr_en_elink <= wr_ena_pack;
+        else
+            dout_elink  <= (others => '0');
+            wr_en_elink <= '0';
+        end if;
+    end if;
+end process;
+
+-- process that asserts wr_en from PF only when vmm data are being written
+-- and registers the daq data themselves. also synchronizes the FIFO empty signal
+wr_en_daq_proc: process(clk_in)
+begin
+    if(rising_edge(clk_in))then
+        din_daq_fifo    <= din_daq; -- register the daq data
+        wr_en_fifo      <= wr_en_daq_i; -- register the wr_en
+
+        empty_elink_i   <= empty_elink; -- sync the empty signal
+        empty_elink_s   <= empty_elink_i;
+    end if;
+end process;
+
+-- the negation of this signal will be used with an AND gate at the wr_en of the FIFO
+inhibit_wr_fifo <= '0' when state_master = ST_WAIT_LAST else '1';
+
+-- this goes to the DAQ elink FIFO
+wr_en_daq_i         <= wr_en_daq and not (inhibit_wr_fifo);
+
+len_cnt             <= std_logic_vector(len_cnt_ug);
+
+fifo_flush_final    <= fifo_flush or fifo_flush_i;
+flush_elink         <= fifo_flush_i;
+this_vmm_hit        <= bitmask_null(to_integer(unsigned(vmm_id)));
 
 driverFIFO : DAQelinkFIFO
   PORT MAP (
     clk     => clk_in,
-    srst    => fifo_flush,
-    din     => din_daq_i,
-    wr_en   => wr_en_daq_i,
+    srst    => fifo_flush_final,
+    din     => din_daq_fifo,
+    wr_en   => wr_en_fifo,
     rd_en   => rd_en,
     dout    => dout_fifo,
     full    => fifo_full,
     empty   => fifo_empty
   );
-
-  dout_elink <= elink_flag & data_out;
-  len_cnt    <= std_logic_vector(len_cnt_ug);
 
 end RTL;
