@@ -62,7 +62,6 @@ entity udp_data_in_handler is
     clk_40              : in  std_logic;
     inhibit_conf        : in  std_logic;
     rst                 : in  std_logic;
-    rst_fifo_init       : in  std_logic;
     state_o             : out std_logic_vector(2 downto 0);
     valid_o             : out std_logic;
     ------------------------------------
@@ -101,6 +100,9 @@ entity udp_data_in_handler is
     vmm_sck             : out std_logic;
     vmm_cs              : out std_logic;
     vmm_cfg_bit         : out std_logic;
+    vmm_first_rd_done   : out std_logic;
+    vmm_second_rd_start : out std_logic;
+    command             : out std_logic_vector(15 downto 0);
     top_rdy             : in  std_logic;
     ------------------------------------
     ---------- XADC Interface ----------
@@ -108,7 +110,9 @@ entity udp_data_in_handler is
     xadc_rdy            : out std_logic;
     vmm_id_xadc         : out std_logic_vector(15 downto 0);
     xadc_sample_size    : out std_logic_vector(10 downto 0);
-    xadc_delay          : out std_logic_vector(17 downto 0)
+    xadc_delay          : out std_logic_vector(17 downto 0);
+    
+    sample_end          : out std_logic
     );
 end udp_data_in_handler;
 
@@ -120,7 +124,7 @@ architecture RTL of udp_data_in_handler is
         ------- General Interface ----------
         clk_125             : in  std_logic;
         rst                 : in  std_logic;
-        rst_fifo_init       : in  std_logic;
+--       rst_fifo_init       : in  std_logic;
         cnt_bytes           : in  unsigned(7 downto 0);
         user_din_udp        : in  std_logic_vector(7 downto 0);
         ------------------------------------
@@ -169,7 +173,7 @@ architecture RTL of udp_data_in_handler is
         clk_125             : in  std_logic;
         clk_40              : in  std_logic;
         rst                 : in  std_logic;
-        rst_fifo            : in  std_logic;
+        rst_ram            : in  std_logic;
         cnt_bytes           : in  unsigned(7 downto 0);
         ------------------------------------
         --------- FIFO/UDP Interface -------
@@ -185,7 +189,9 @@ architecture RTL of udp_data_in_handler is
         vmm_cfg_bit         : out std_logic;
         vmm_conf            : in  std_logic;
         top_rdy             : in  std_logic;
-        init_ser            : in  std_logic
+        init_ser            : in  std_logic;
+        first_rd_done       : out std_logic;
+        second_rd_start     : out std_logic
     );
     END COMPONENT;
 
@@ -199,31 +205,29 @@ architecture RTL of udp_data_in_handler is
         data_out_s  : out std_logic_vector(NUMBER_OF_BITS - 1 downto 0)     -- synced data to clk_dst
     );
     END COMPONENT;
-
-    signal user_data_prv    : std_logic_vector(7 downto 0)  := (others => '0');
-    signal command          : std_logic_vector(15 downto 0) := (others => '0');
-    signal user_valid_prv   : std_logic := '0';
-    signal user_last_prv    : std_logic := '0';
-    signal cnt_bytes        : unsigned(7 downto 0) := (others => '0');
-    signal conf_state       : unsigned(2 downto 0) := (others => '0');
-    signal sample_hdr       : std_logic := '0';
-    signal vmm_conf         : std_logic := '0';
-    signal vmm_ser_done     : std_logic := '0';
-    signal vmmSer_done_s125 : std_logic := '0';
-    signal vmm_conf_rdy     : std_logic := '0';
-    signal fpga_conf        : std_logic := '0';
-    signal flash_conf       : std_logic := '0';
-    signal xadc_conf        : std_logic := '0';
-    signal rst_fifo         : std_logic := '0';
-    signal rst_fifo_vmmConf : std_logic := '0';
-    signal rst_fifo_s40     : std_logic := '0';
-    signal xadcPacket_rdy   : std_logic := '0';
-    signal flashPacket_rdy  : std_logic := '0';
-    signal fpgaPacket_rdy   : std_logic := '0';
-    signal init_ser         : std_logic := '0';
-    signal init_ser_s40     : std_logic := '0';
-    signal top_rdy_s40      : std_logic := '0';
-    signal fpga_rst_i       : std_logic := '0';
+    
+    signal user_data_prv        : std_logic_vector(7 downto 0)  := (others => '0');
+    signal user_valid_prv       : std_logic := '0';
+    signal user_last_prv        : std_logic := '0';
+    signal cnt_bytes            : unsigned(7 downto 0) := (others => '0');
+    signal conf_state           : unsigned(2 downto 0) := (others => '0');
+    signal sample_hdr           : std_logic := '0';
+    signal vmm_conf             : std_logic := '0';
+    signal vmm_ser_done         : std_logic := '0';
+    signal vmmSer_done_s125     : std_logic := '0';
+    signal vmm_conf_rdy         : std_logic := '0';
+    signal fpga_conf            : std_logic := '0';
+    signal flash_conf           : std_logic := '0';
+    signal xadc_conf            : std_logic := '0';
+    signal rst_ram              : std_logic := '0';
+    signal rst_ram_s40          : std_logic := '0';
+    signal xadcPacket_rdy       : std_logic := '0';
+    signal flashPacket_rdy      : std_logic := '0';
+    signal fpgaPacket_rdy       : std_logic := '0';
+    signal init_ser             : std_logic := '0';
+    signal init_ser_s40         : std_logic := '0';
+    signal top_rdy_s40          : std_logic := '0';
+    signal fpga_rst_i           : std_logic := '0';
     
     type masterFSM is (ST_IDLE, ST_CHK_PORT, ST_COUNT, ST_WAIT_FOR_BUSY, ST_WAIT_FOR_IDLE, ST_RESET_FIFO, ST_WAIT_FOR_SCK_FSM, ST_ERROR);
     signal st_master : masterFSM := ST_IDLE;
@@ -314,7 +318,7 @@ begin
             xadc_conf   <= '0';
             sample_hdr  <= '0';
             init_ser    <= '0';
-            rst_fifo    <= '1';
+            rst_ram    <= '1';
             st_master   <= ST_IDLE;
         else
             case st_master is
@@ -326,7 +330,7 @@ begin
                 fpga_conf   <= '0';
                 flash_conf  <= '0';
                 xadc_conf   <= '0';
-                rst_fifo    <= '0';
+                rst_ram    <= '0';
 
                 if(udp_rx.data.data_in_valid = '1' and inhibit_conf = '0')then
                     cnt_bytes   <= cnt_bytes + 1;
@@ -413,11 +417,11 @@ begin
             when ST_RESET_FIFO =>
                 conf_state  <= "101";
                 if(vmmSer_done_s125 = '1' and top_rdy = '0')then -- flow_fsm is back to IDLE + serialization has finished => reset
-                    rst_fifo    <= '1';
+                    rst_ram     <= '1';
                     init_ser    <= '0';
                     st_master   <= ST_WAIT_FOR_SCK_FSM;
                 else
-                    rst_fifo    <= '0';     -- serialization not finished or flow_fsm is not in IDLE, wait
+                    rst_ram     <= '0';     -- serialization not finished or flow_fsm is not in IDLE, wait
                     init_ser    <= '1';
                     st_master   <= ST_RESET_FIFO;
                 end if;
@@ -426,10 +430,10 @@ begin
             when ST_WAIT_FOR_SCK_FSM =>
                 conf_state  <= "110";
                 if(vmmSer_done_s125 = '0' and udp_rx.data.data_in_valid = '0')then
-                    rst_fifo    <= '0';
+                    rst_ram     <= '0';
                     st_master   <= ST_IDLE;
                 else
-                    rst_fifo    <= '1';
+                    rst_ram     <= '1';
                     st_master   <= ST_WAIT_FOR_SCK_FSM;
                 end if;
             
@@ -474,9 +478,12 @@ begin
                 command(15 downto 8)        <= user_data_prv;
             when "00001000" => --8
                 command(7 downto 0)         <= user_data_prv;
+            when "00001001" =>
+                sample_end                  <= '1';
             when others => null;
             end case;
-        else null;
+        else 
+            sample_end                      <= '0';
         end if;
     end if;
 end process;
@@ -487,7 +494,6 @@ fpga_config_logic: fpga_config_block
         ------- General Interface ----------
         clk_125             => clk_125,
         rst                 => rst,
-        rst_fifo_init       => rst_fifo_init,
         cnt_bytes           => cnt_bytes,
         user_din_udp        => user_data_prv,
         ------------------------------------
@@ -535,7 +541,7 @@ vmm_config_logic: vmm_config_block
         clk_125             => clk_125,
         clk_40              => clk_40,
         rst                 => rst,
-        rst_fifo            => rst_fifo_s40,
+        rst_ram             => rst_ram_s40,
         cnt_bytes           => cnt_bytes,
         ------------------------------------
         --------- FIFO/UDP Interface -------
@@ -551,7 +557,9 @@ vmm_config_logic: vmm_config_block
         vmm_cfg_bit         => vmm_cfg_bit,
         vmm_conf            => vmm_conf,
         top_rdy             => top_rdy_s40,
-        init_ser            => init_ser_s40
+        init_ser            => init_ser_s40,
+        second_rd_start     => vmm_second_rd_start,
+        first_rd_done       => vmm_first_rd_done
     );
 
     xadc_rdy        <= xadcPacket_rdy;
@@ -561,7 +569,6 @@ vmm_config_logic: vmm_config_block
     state_o         <= std_logic_vector(conf_state);
     valid_o         <= user_valid_prv;
     vmmConf_came    <= vmm_conf;
-    rst_fifo_vmmConf<= rst_fifo or rst_fifo_init;
 
 glbl_rst_buf: BUFG port map (O => fpga_rst, I => fpga_rst_i);
 
@@ -576,10 +583,10 @@ CDCC_125to40: CDCC
         clk_dst         => clk_40,
   
         data_in(0)      => init_ser,
-        data_in(1)      => rst_fifo_vmmConf,
+        data_in(1)      => rst_ram,
         data_in(2)      => top_rdy,
         data_out_s(0)   => init_ser_s40,
-        data_out_s(1)   => rst_fifo_s40,
+        data_out_s(1)   => rst_ram_s40,
         data_out_s(2)   => top_rdy_s40
     );
 

@@ -1160,7 +1160,7 @@ architecture Behavioral of vmmFrontEnd is
         clk_40              : in  std_logic;
         inhibit_conf        : in  std_logic;
         rst                 : in  std_logic;
-        rst_fifo_init       : in  std_logic;
+--        rst_fifo_init       : in  std_logic;
         state_o             : out std_logic_vector(2 downto 0);
         valid_o             : out std_logic;
         ------------------------------------
@@ -1651,7 +1651,7 @@ udp_din_conf_block: udp_data_in_handler
         clk_40              => clk_40,
         inhibit_conf        => inhibit_conf,
         rst                 => glbl_rst_i,
-        rst_fifo_init       => glbl_fifo_init_s1,
+ --       rst_fifo_init       => glbl_fifo_init_s1,
         state_o             => conf_state,
         valid_o             => open,
         ------------------------------------

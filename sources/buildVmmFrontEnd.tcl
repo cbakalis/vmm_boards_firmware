@@ -206,6 +206,7 @@ set files [list \
  "[file normalize "$origin_dir/sources_1/ip/cont_buffer.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/vmm_conf_buffer.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/fpga_reg_buffer.xcix"]"\
+ "[file normalize "$origin_dir/sources_1/ip/vmm_conf_ram.xcix"]"\
  "[file normalize "$origin_dir/sources_1/readout/event_timing_reset.vhd"]"\
  "[file normalize "$origin_dir/sources_1/readout/select_data.vhd"]"\
  "[file normalize "$origin_dir/sources_1/readout/vmmSignalsDemux.vhd"]"\
