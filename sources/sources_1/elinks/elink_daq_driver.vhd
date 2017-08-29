@@ -301,7 +301,7 @@ begin
             -- release the PF inhibitor and wait for all VMM data to be written in the FIFO
             when ST_WAIT_LAST =>
                 inhibit_pf <= '0'; -- release the PF inhibitor and let data get into our FIFO
-                if(last = '1')then
+                if(pf_rdy = '0')then -- this was 'last'.
                     state_master <= ST_WAIT_ELINK;
                 else
                     state_master <= ST_WAIT_LAST;

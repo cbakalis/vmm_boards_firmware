@@ -36,6 +36,7 @@
 -- of the vmm level-0 data buffer. (Christos Bakalis)
 -- 20.06.2017: Removed pipeline. (Christos Bakalis)
 -- 29.06.2017: Swapped clk_des with IDDR to ease timing closure. (Christos Bakalis)
+-- 29.08.2017: Added wr_en counter. (Christos Bakalis)
 --
 ----------------------------------------------------------------------------------
 library IEEE;
@@ -58,6 +59,7 @@ entity l0_deserializer_decoder is
         dout_dec    : out std_logic_vector(7 downto 0);
         commas_true : out std_logic;
         wr_en       : out std_logic;
+        null_event  : out std_logic;
         ------------------------------------
         ---------- VMM Interface -----------
         vmm_data0   : in  std_logic;
@@ -117,9 +119,11 @@ architecture RTL of l0_deserializer_decoder is
     signal L0_8B_data_i         : std_logic_vector(7 downto 0) := (others => '0');
     signal L0_8B_K              : std_logic_vector(0 downto 0) := (others => '0');
     signal din_dec              : std_logic_vector(9 downto 0) := (others => '0');
+    signal wr_en_i              : std_logic := '0';
 
-    -- comma counter
+    -- comma counter and wr_en counter
     signal cnt_commas           : unsigned(4 downto 0) := (others => '0');
+    signal cnt_wr_en            : unsigned(1 downto 0) := (others => '0');
     constant cnt_thr            : unsigned(4 downto 0) := "11111"; -- 6 consecutive commas              
 
 begin
@@ -319,11 +323,34 @@ wr_ena_proc: process(clk_ckdt)
 begin
     if(rising_edge(clk_ckdt))then
         if(inhib_wr = '0' and dec_en = '1' and L0_8B_data /= x"BC")then
-            wr_en <= '1';
+            wr_en_i <= '1';
         else
-            wr_en <= '0';
+            wr_en_i <= '0';
         end if;
-            L0_8B_data_i <= L0_8B_data;
+        L0_8B_data_i <= L0_8B_data;
+    end if;
+end process;
+
+-- process that counts write_enables and asserts the null_event signal
+-- null_event is high when the VMM only sends a header
+cnt_wr_proc: process(clk_ckdt)
+begin
+    if(rising_edge(clk_ckdt))then
+        if(inhib_wr = '0')then
+            if(wr_en_i = '1' and cnt_wr_en /= "11")then
+                cnt_wr_en <= cnt_wr_en + 1;
+            else 
+                cnt_wr_en <= cnt_wr_en; -- keep at this state until assertion of inhibit
+            end if;
+        else
+            cnt_wr_en <= (others => '0');
+        end if;
+
+        if(cnt_wr_en > "01")then
+            null_event <= '0'; -- keep at this state until assertion of inhibit
+        else
+            null_event <= '1';
+        end if;
     end if;
 end process;
 ------------------------------------------  
@@ -332,5 +359,6 @@ end process;
   align_sel_p   <= align_sreg_p(0);
   align_sel_n   <= align_sreg_n(0);
   dout_dec      <= L0_8B_data_i;
+  wr_en         <= wr_en_i;
   
 end RTL;

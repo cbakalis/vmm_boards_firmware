@@ -47,12 +47,14 @@ entity l0_buffer_wrapper is
         rst_buff        : in  std_logic;
         wr_accept       : in  std_logic;
         level_0         : in  std_logic;
+        null_event_out  : out std_logic;
         ------------------------------------
         --- Deserializer Interface ---------
         inhib_wr        : out std_logic;
         commas_true     : in  std_logic;
         dout_dec        : in  std_logic_vector(7 downto 0);
         wr_en           : in  std_logic;
+        null_event      : in  std_logic;
         ------------------------------------
         ---- Packet Formation Interface ----
         rd_ena_buff     : in  std_logic;
@@ -98,28 +100,23 @@ end component;
     signal enable_timeout   : std_logic := '0';
     signal timeout_cnt      : integer range 0 to 511 := 0;
     signal timeout          : std_logic := '0';
+    signal null_event_i     : std_logic := '0';
+    signal null_event_s     : std_logic := '0';
     constant timeout_max    : integer := 511;      
     
-    type stateType is (ST_IDLE, ST_WAIT_FOR_DATA, ST_READING, ST_DONE);
+    type stateType is (ST_IDLE, ST_WAIT_FOR_DATA, ST_LATCH_NULL, ST_READING, ST_DONE);
     signal state : stateType := ST_IDLE;
+
+    attribute FSM_ENCODING                  : string;
+    attribute FSM_ENCODING of state         : signal is "ONE_HOT";
 
     attribute ASYNC_REG                     : string;
     attribute ASYNC_REG of commas_true_i    : signal is "TRUE";
     attribute ASYNC_REG of commas_true_s    : signal is "TRUE";
     attribute ASYNC_REG of inhib_wr_i       : signal is "TRUE";
     attribute ASYNC_REG of inhib_wr_s       : signal is "TRUE";
-    
---    attribute mark_debug : string;
---    attribute mark_debug of wr_en          : signal is "TRUE";
---    attribute mark_debug of dout_dec       : signal is "TRUE";
---    attribute mark_debug of fifo_empty     : signal is "TRUE";
---    attribute mark_debug of rd_ena_buff    : signal is "TRUE";
---    attribute mark_debug of inhibit_write  : signal is "TRUE";
---    attribute mark_debug of state_debug    : signal is "TRUE";
---    attribute mark_debug of level_0        : signal is "TRUE";
-    
---    attribute dont_touch : string;
---    attribute dont_touch of state_debug    : signal is "TRUE";
+    attribute ASYNC_REG of null_event_i     : signal is "TRUE";
+    attribute ASYNC_REG of null_event_s     : signal is "TRUE";
 
 begin
 
@@ -132,6 +129,7 @@ begin
             inhibit_write   <= '1';
             vmmWordReady    <= '0';
             enable_timeout  <= '0';
+            null_event_out  <= '1';
             state           <= ST_IDLE;
         else
             case state is
@@ -142,6 +140,7 @@ begin
                 inhibit_write   <= '1';
                 vmmWordReady    <= '0';
                 enable_timeout  <= '0';
+                null_event_out  <= '1';
 
                 if(wr_accept = '1')then
                     state <= ST_WAIT_FOR_DATA;
@@ -151,18 +150,29 @@ begin
 
             -- if there are data in the buffer and commas are being detected => ready to be read
             when ST_WAIT_FOR_DATA =>
-                vmmEventDone      <= '0';
-                vmmWordReady      <= '0';
-                inhibit_write     <= '0';
-                enable_timeout    <= '1';
+                vmmEventDone    <= '0';
+                vmmWordReady    <= '0';
+                inhibit_write   <= '0';
+                enable_timeout  <= '1';
+                null_event_out  <= '1';
 
                 if(fifo_empty = '0' and commas_true_s = '1')then
-                    state   <= ST_READING;
+                    state   <= ST_LATCH_NULL;
 --                elsif(timeout = '1')then -- timeout of 4us reached
 --                    state   <= ST_DONE;
                 else
                     state   <= ST_WAIT_FOR_DATA;
                 end if;
+
+            -- sample and keep the event_null signal for the elink module
+            when ST_LATCH_NULL =>
+                vmmEventDone    <= '0';
+                vmmWordReady    <= '0';
+                inhibit_write   <= '0';
+                enable_timeout  <= '1';
+                null_event_out  <= null_event_s;
+                state           <= ST_READING;
+
 
             -- wait for pf to empty the buffer and prevent any further writes
             when ST_READING =>     
@@ -205,12 +215,14 @@ begin
     end if;
 end process;
 
--- sync 'commas_true'
+-- sync 'commas_true' and 'null_event'
 clk_sync_proc: process(clk)
 begin
     if(rising_edge(clk))then
         commas_true_i  <= commas_true;
         commas_true_s  <= commas_true_i;
+        null_event_i   <= null_event;
+        null_event_s   <= null_event_i;
     end if;
 end process;
 

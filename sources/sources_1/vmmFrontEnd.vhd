@@ -465,6 +465,7 @@ architecture Behavioral of vmmFrontEnd is
     signal level_0                  : std_logic := '0';
     signal daq_on_inhib             : std_logic := '1';
     signal CKDT_glbl                : std_logic := '0';
+    signal ro_rdy                   : std_logic := '0';
     signal vmm_ckdt_enable          : std_logic_vector(8 downto 1) := (others => '0');
     
     -------------------------------------------------
@@ -509,6 +510,8 @@ architecture Behavioral of vmmFrontEnd is
     signal pf_dbg_st    : std_logic_vector(4 downto 0) := b"00000";
     signal rd_ena_buff  : std_logic := '0';
     signal pf_rst_final : std_logic := '0';
+    signal pfInhibit_i  : std_logic := '0';
+    signal pfReady_i    : std_logic := '0';
     
     -------------------------------------------------
     -- FIFO2UDP Signals
@@ -594,6 +597,7 @@ architecture Behavioral of vmmFrontEnd is
     signal elink_DAQ_tx         : std_logic := '0';
     signal elink_DAQ_rx         : std_logic := '0';
     signal trigger_cnt          : std_logic_vector(15 downto 0) := (others => '0');
+    signal bitmask_null         : std_logic_vector(7 downto 0) := (others => '0');
     
     -------------------------------------------------
     -- Flow FSM signals
@@ -896,6 +900,9 @@ architecture Behavioral of vmmFrontEnd is
             --
             vmm_conf        : in  std_logic;                    -- high during VMM configuration
             daq_on_inhib    : out std_logic;                    -- prevent daq_on state before checking link health
+            --
+            null_event      : out std_logic_vector(7 downto 0); -- bitmask for elink module
+            all_ready       : out std_logic;                    -- for elink and packet formation
             ------------------------------------
             ---- Packet Formation Interface ----
             vmmWordReady    : out std_logic;
@@ -1005,10 +1012,9 @@ architecture Behavioral of vmmFrontEnd is
             linkHealth_bmsk : in std_logic_vector(8 downto 1);
             rst_FIFO        : out std_logic;
             
---            elink_busy      : in  std_logic; -- elink is busy sending
---            elink_flush     : out std_logic; -- flush the TX FIFOs
---            elink_rst       : out std_logic; -- reset the elink DAQ driver
---            elink_wr_rdy    : out std_logic; -- flag indicating elink DAQ driver can write to its FIFO
+            elink_inhibit   : in  std_logic; -- elink inhibitor
+            pf_rdy          : out std_logic; -- pf is ready to send vmm data
+            ro_rdy          : in  std_logic; -- all readout modules ready
             trigger_cnt     : out std_logic_vector(15 downto 0);
             
             latency         : in std_logic_vector(15 downto 0);
@@ -1894,6 +1900,9 @@ readout_vmm: vmm_readout_wrapper
         --
         vmm_conf        => conf_wen_i,
         daq_on_inhib    => daq_on_inhib, -- synced to flow_fsm's clock
+        --
+        null_event      => bitmask_null,
+        all_ready       => ro_rdy,
         ------------------------------------
         ---- Packet Formation Interface ----
         vmmWordReady    => vmmWordReady_i,
@@ -2000,10 +2009,9 @@ packet_formation_instance: packet_formation
         linkHealth_bmsk => linkHealth_bmsk,
         rst_FIFO        => pf_rst_FIFO,
         
---        elink_busy      => elink_busy,  -- elink is busy sending
---        elink_flush     => flush_elink, -- flush the TX FIFOs
---        elink_rst       => rst_elink,   -- reset the elink DAQ driver
---        elink_wr_rdy    => wr_en_safe,  -- flag indicating elink DAQ driver can write to its FIFO
+        elink_inhibit   => pfInhibit_i,
+        pf_rdy          => pfReady_i,
+        ro_rdy          => ro_rdy,
         trigger_cnt     => trigger_cnt,
 
         latency         => latency_conf,
@@ -2230,17 +2238,17 @@ DAQ_ELINK: elink_wrapper
         elink_rx        => elink_DAQ_rx,
         ---------------------------------
         ------ Readout Interface --------
-        ro_rdy          => '0', -- add me
-        bitmask_null    => (others => '0'), -- add me
+        ro_rdy          => ro_rdy,
+        bitmask_null    => bitmask_null,
         ---------------------------------
         --------- PF Interface ----------
         din_daq         => daq_data_out_i,
         wr_en_daq       => daq_wr_en_i,
         din_last        => end_packet_daq_int,
         trigger_cnt     => trigger_cnt,
-        inhibit_pf      => open, -- add me
-        pf_busy         => '0', -- add me
-        pf_rdy          => '0', -- add me
+        inhibit_pf      => pfInhibit_i,
+        pf_busy         => pfBusy_i,
+        pf_rdy          => pfReady_i,
         vmm_id          => pf_vmmIdRo
     ); 
     

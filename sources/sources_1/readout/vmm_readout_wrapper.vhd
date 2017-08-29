@@ -68,6 +68,9 @@ entity vmm_readout_wrapper is
     --
     vmm_conf        : in  std_logic;                    -- high during VMM configuration
     daq_on_inhib    : out std_logic;                    -- prevent daq_on state before checking link health
+    --
+    null_event      : out std_logic_vector(7 downto 0); -- bitmask for elink module
+    all_ready       : out std_logic;                    -- for elink and packet formation
     ------------------------------------
     ---- Packet Formation Interface ----
     vmmWordReady    : out std_logic;
@@ -131,6 +134,8 @@ architecture RTL of vmm_readout_wrapper is
         wr_accept       : in  std_logic; -- buffer acceptance window
         vmm_conf        : in  std_logic; -- high during VMM configuration
         daq_on_inhib    : out std_logic; -- prevent daq_on state before checking link health
+        all_ready       : out std_logic;                    -- for elink and packet formation
+        null_event_out  : out std_logic_vector(8 downto 1); -- bitmask for elink module
         ------------------------------------
         ---- Packet Formation Interface ----
         rd_ena_buff     : in  std_logic;
@@ -167,6 +172,7 @@ architecture RTL of vmm_readout_wrapper is
     signal vmmEventDone_l0      : std_logic := '0';
 
     signal vmm_ckdt_glbl_i      : std_logic := '0';
+    signal null_event_out_i     : std_logic_vector(8 downto 1)  := (others => '0');
 
 begin
 
@@ -215,6 +221,8 @@ readout_vmm_l0: level0_wrapper
         wr_accept       => wr_accept,
         vmm_conf        => vmm_conf,
         daq_on_inhib    => daq_on_inhib,
+        all_ready       => all_ready,
+        null_event_out  => null_event_out_i,
         ------------------------------------
         ---- Packet Formation Interface ----
         rd_ena_buff     => rd_ena_buff,
@@ -279,6 +287,16 @@ begin
         data1_in_vec_l0     <= (others => '0');
     end case;
 end process;
+
+    -- is this really needed?
+    null_event(7) <= null_event_out_i(8);
+    null_event(6) <= null_event_out_i(7);
+    null_event(5) <= null_event_out_i(6);
+    null_event(4) <= null_event_out_i(5);
+    null_event(3) <= null_event_out_i(4);
+    null_event(2) <= null_event_out_i(3);
+    null_event(1) <= null_event_out_i(2);
+    null_event(0) <= null_event_out_i(1);
 
 CKDT_BUFGMUX: BUFGMUX
     port map(O => vmm_ckdt_glbl_i, I0 => vmm_ckdt_cont, I1 => clk_ckdt, S => vmmReadoutMode);

@@ -78,10 +78,9 @@ entity packet_formation is
         linkHealth_bmsk : in std_logic_vector(8 downto 1);
         rst_FIFO        : out std_logic;
         
---        elink_busy      : in  std_logic; -- elink is busy sending
---        elink_flush     : out std_logic; -- flush the TX FIFOs
---        elink_rst       : out std_logic; -- reset the elink DAQ driver
---        elink_wr_rdy    : out std_logic; -- flag indicating elink DAQ driver can write to its FIFO
+        elink_inhibit   : in  std_logic; -- elink inhibitor
+        pf_rdy          : out std_logic; -- pf is ready to send vmm data
+        ro_rdy          : in  std_logic; -- all readout modules ready
         trigger_cnt     : out std_logic_vector(15 downto 0); 
         
         latency         : in std_logic_vector(15 downto 0);
@@ -129,8 +128,8 @@ architecture Behavioral of packet_formation is
     signal trraw_synced125_prev : std_logic                     := '0';
     signal clearValid           : std_logic                     := '0';  
 
-    type stateType is (waitingForNewCycle, increaseCounter, waitForLatency, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
-                       sendHeaderStep3, triggerVmmReadout, waitForData, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, 
+    type stateType is (waitingForNewCycle, increaseCounter, waitForReady, waitForLatency, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
+                       sendHeaderStep3, triggerVmmReadout, waitForData, chkInhib, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, 
                        isUDPDone, isTriggerOff, S2, eventDone);
     signal state            : stateType;
 
@@ -208,6 +207,7 @@ begin
             sel_wrenable            <= '0';
             rst_FIFO                <= '1';
             daqFIFO_wr_en_hdr       <= '0';
+            pf_rdy                  <= '0';
             packLen_cnt             <= x"000";
             wait_Cnt                <= 0;
             sel_cnt                 <= (others => '0');
@@ -225,6 +225,7 @@ begin
                 sel_wrenable            <= '0';
                 drv_enable              <= '0';
                 trigLatencyCnt          <= 0;
+                pf_rdy                  <= '0';
                 sel_cnt                 <= (others => '0');
                 rst_FIFO                <= '0';
                 if newCycle = '1' then
@@ -235,7 +236,14 @@ begin
                 debug_state     <= "00001";
                 pfBusy_i        <= '1';
                 eventCounter_i  <= eventCounter_i + 1;
-                state           <= waitForLatency;
+                state           <= waitForReady;
+
+            when waitForReady =>
+                if(ro_rdy = '1')then
+                    state <= waitForLatency;
+                else
+                    state <= waitForReady;
+                end if;
                 
             when waitForLatency =>
                 debug_state <= "00010";
@@ -254,7 +262,11 @@ begin
                 packLen_cnt     <= x"000";      -- Reset length count
                 sel_wrenable    <= '0';
                 vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
-                state           <= captureEventID;
+                if(elink_inhibit = '1')then
+                    state <= S2;
+                else
+                    state <= captureEventID;
+                end if;
 
             when captureEventID =>      -- Form Header
                 debug_state         <= "00011";
@@ -301,10 +313,8 @@ begin
                     state   <= triggerVmmReadout;
                 end if;
 
-            when triggerVmmReadout =>   -- Creates an 136ns pulse to trigger the readout if not at level0 mode
-                                        
+            when triggerVmmReadout =>   -- Creates an 136ns pulse to trigger the readout if not at level0 mode                                        
                 debug_state                 <= "00111";
-                --elink_wr_rdy                <= '1'; -- now safe to write data to the elink DAQ driver FIFO
                 sel_cnt                     <= "110"; -- fix the counter to 4 to select the VMM data for the next steps
                 sel_wrenable                <= '1';   -- grant control to driver
                 if wait_Cnt < 30 and vmmReadoutMode = '0' then
@@ -318,10 +328,15 @@ begin
 
             when waitForData =>
                 debug_state <= "01000";
-                if (vmmWordReady = '1') then
-                    state           <= sendVmmDataStep1;
-                elsif (vmmEventDone = '1') then
-                    state           <= sendTrailer; 
+                pf_rdy      <= '1';
+                if(elink_inhibit = '1')then
+                    state <= waitForData;
+                else
+                    if (vmmWordReady = '1') then
+                        state           <= sendVmmDataStep1;
+                    elsif (vmmEventDone = '1') then
+                        state           <= sendTrailer; 
+                    end if;
                 end if;
 
             when sendVmmDataStep1 =>
@@ -350,6 +365,7 @@ begin
 
             when sendTrailer =>
                 debug_state   <= "01100";
+                pf_rdy        <= '0';
                 packLen_i     <= packLen_cnt + packLen_drv2pf_unsg; 
                 state         <= packetDone;
 
@@ -360,7 +376,7 @@ begin
                     state       <= eventDone;
                 else
                     state       <= isUDPDone;
-                end if; 
+                end if;
 
             when eventDone =>
                 debug_state     <= "01110";
@@ -373,8 +389,15 @@ begin
                     vmmId_cnt    <= vmmId_cnt + 1;
                     sel_cnt      <= "000";
                     sel_wrenable <= '0';
-                    state        <= S2; -- was S2
+                    state        <= chkInhib; -- was S2
                 end if;
+
+            when chkInhib =>
+                if(elink_inhibit = '1')then
+                    state <= chkInhib;
+                else
+                    state <= S2;
+                end if; 
         
                 
 --            when resetVMMs =>

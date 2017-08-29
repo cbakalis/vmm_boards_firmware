@@ -53,7 +53,8 @@ entity level0_wrapper is
         wr_accept       : in  std_logic; -- buffer acceptance window
         vmm_conf        : in  std_logic; -- high during VMM configuration
         daq_on_inhib    : out std_logic; -- prevent daq_on state before checking link health
-        all_ready       : out std_logic;
+        all_ready       : out std_logic;                    -- for elink and packet formation
+        null_event_out  : out std_logic_vector(8 downto 1); -- bitmask for elink module
         ------------------------------------
         ---- Packet Formation Interface ----
         rd_ena_buff     : in  std_logic;
@@ -85,6 +86,7 @@ component l0_deserializer_decoder
         commas_true : out std_logic;
         dout_dec    : out std_logic_vector(7 downto 0);
         wr_en       : out std_logic;
+        null_event  : out std_logic;
         ------------------------------------
         ---------- VMM Interface -----------
         vmm_data0   : in  std_logic;
@@ -101,12 +103,14 @@ component l0_buffer_wrapper is
         rst_buff        : in  std_logic;
         wr_accept       : in  std_logic;
         level_0         : in  std_logic;
+        null_event_out  : out std_logic;
         ------------------------------------
         --- Deserializer Interface ---------
         inhib_wr        : out std_logic;
         commas_true     : in  std_logic;
         dout_dec        : in  std_logic_vector(7 downto 0);
         wr_en           : in  std_logic;
+        null_event      : in  std_logic;
         ------------------------------------
         ---- Packet Formation Interface ----
         rd_ena_buff     : in  std_logic;
@@ -147,6 +151,7 @@ end component;
     signal commas_true_i        : std_logic_vector(8 downto 1)  := (others => '0');
     signal commas_true_s0       : std_logic_vector(8 downto 1)  := (others => '0');
     signal commas_true_s1       : std_logic_vector(8 downto 1)  := (others => '0');
+    signal null_event_i         : std_logic_vector(8 downto 1)  := (others => '0');
     signal vmmWord_i            : vmmWord_array;
     signal dout_dec             : dout_dec_array;
     
@@ -183,6 +188,7 @@ des_dec_inst: l0_deserializer_decoder
         commas_true => commas_true_i(I),
         dout_dec    => dout_dec(I),
         wr_en       => wr_en(I),
+        null_event  => null_event_i(I),
         ------------------------------------
         ---------- VMM Interface -----------
         vmm_data0   => vmm_data0_vec(I),
@@ -198,12 +204,14 @@ l0_buf_wr_inst: l0_buffer_wrapper
         rst_buff        => rst_buff,
         wr_accept       => wr_accept,
         level_0         => level_0,
+        null_event_out  => null_event_out(I),
         ------------------------------------
         --- Deserializer Interface ---------
         inhib_wr        => inhib_wr_i(I),
         commas_true     => commas_true_i(I),
         dout_dec        => dout_dec(I),
         wr_en           => wr_en(I),
+        null_event      => null_event_i(I),
         ------------------------------------
         ---- Packet Formation Interface ----
         rd_ena_buff     => rd_ena_buff_i(I),
@@ -315,8 +323,8 @@ end process;
     vmm_cktk_vec(6) <= level_0;
     vmm_cktk_vec(7) <= level_0;
     vmm_cktk_vec(8) <= level_0;
-    all_ready       <= vmmWordReady_i(0) and vmmWordReady_i(1) and vmmWordReady_i(2) and
-                       vmmWordReady_i(3) and vmmWordReady_i(4) and vmmWordReady_i(5) and
-                       vmmWordReady_i(6) and vmmWordReady_i(7);
+    all_ready       <= vmmWordReady_i(1) and vmmWordReady_i(2) and vmmWordReady_i(3) and
+                       vmmWordReady_i(4) and vmmWordReady_i(5) and vmmWordReady_i(6) and
+                       vmmWordReady_i(7) and vmmWordReady_i(8);
     
 end RTL;
