@@ -193,9 +193,9 @@ set_property PACKAGE_PIN AB10    [get_ports ELINK_DAQ_RX_N]
 set_property PACKAGE_PIN W14     [get_ports ELINK_DAQ_TX_P]
 set_property PACKAGE_PIN Y14     [get_ports ELINK_DAQ_TX_N]
 
-#ELINK clock RXP_0/RXN_0 of MMFE8 miniSAS. (DAQ)
-set_property PACKAGE_PIN V13     [get_ports ELINK_DAQ_CLK_P]
-set_property PACKAGE_PIN V14     [get_ports ELINK_DAQ_CLK_N]
+#ELINK clock TXP_0/TXN_0 of MMFE8 miniSAS. (DAQ)
+set_property PACKAGE_PIN T16     [get_ports ELINK_DAQ_CLK_P]
+set_property PACKAGE_PIN U16     [get_ports ELINK_DAQ_CLK_N]
 
 #LOCK LED
 set_property IOSTANDARD LVCMOS12 [get_ports LED_LOCKED]

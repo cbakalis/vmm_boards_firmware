@@ -261,8 +261,8 @@ entity vmmFrontEnd is
 
         ---- E-link Interface, Clock
         -----------------------------------------
-        ELINK_DAQ_CLK_P       : IN    STD_LOGIC;
-        ELINK_DAQ_CLK_N       : IN    STD_LOGIC;
+        ELINK_DAQ_CLK_P       : OUT    STD_LOGIC;
+        ELINK_DAQ_CLK_N       : OUT    STD_LOGIC;
         --ELINK_TTC_CLK_P       : IN    STD_LOGIC;
         --ELINK_TTC_CLK_N       : IN    STD_LOGIC;
         
@@ -1833,8 +1833,8 @@ udp_reply_instance: udp_reply_handler
 mmcm_master: clk_wiz_gen    
     port map (
         -- Clock in ports
-        clk_in1_p   => ELINK_DAQ_CLK_P, --X_2V5_DIFF_CLK_N
-        clk_in1_n   => ELINK_DAQ_CLK_N,
+        clk_in1_p   => X_2V5_DIFF_CLK_P, --X_2V5_DIFF_CLK_N
+        clk_in1_n   => X_2V5_DIFF_CLK_N,
         -- Clock out ports  
         clk_out_160 => clk_160,
         clk_out_320 => clk_320,
@@ -2282,8 +2282,8 @@ elink_tx_daq_buf: OBUFDS generic map  (IOSTANDARD => "DEFAULT" , SLEW => "FAST")
                          port map     (O =>  ELINK_DAQ_TX_P, OB => ELINK_DAQ_TX_N, I =>  elink_DAQ_tx);
 elink_rx_daq_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT", IBUF_LOW_PWR => FALSE, DIFF_TERM => TRUE)
                          port map     (O =>  elink_DAQ_rx, I =>  ELINK_DAQ_RX_P, IB => ELINK_DAQ_RX_N);    
---elink_rx_ttc_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT" , DIFF_TERM => TRUE)
---                         port map     (O =>  elink_TTC_rx, I =>  ELINK_TTC_RX_P, IB => ELINK_TTC_RX_N);
+elink_clk_tx_buf: OBUFDS generic map  (IOSTANDARD => "DEFAULT" , SLEW => "FAST")
+                         port map     (O =>  ELINK_DAQ_CLK_P, OB =>  ELINK_DAQ_CLK_N, I => clk_40);
 ------------------------------------------------------------------------------------------------------------------
 
 led_obuf:        OBUF   port map (O => LED_LOCKED, I => master_locked);
