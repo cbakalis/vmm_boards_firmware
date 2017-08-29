@@ -98,7 +98,7 @@ end component;
     signal din_daq_fifo     : std_logic_vector(15 downto 0) := (others => '0');
     signal empty_elink_i    : std_logic := '0';
     signal empty_elink_s    : std_logic := '0';
-    signal this_vmm_hit     : std_logic := '0';
+    signal this_vmm_empty   : std_logic := '0';
 
     signal flag_pack        : std_logic_vector(1 downto 0) := (others => '0');
     signal flag_null        : std_logic_vector(1 downto 0) := (others => '0');
@@ -263,9 +263,9 @@ begin
                 inhibit_pf      <= '1';
                 wait_flush      <= (others => '0');
                 fifo_flush_i    <= '0';
-                if(this_vmm_hit = '0')then -- data in this one
+                if(this_vmm_empty = '0')then -- data in this one
                     state_master <= ST_WAIT_RDY;
-                elsif(this_vmm_hit = '1')then -- no data in this one
+                elsif(this_vmm_empty = '1')then -- no data in this one
                     state_master <= ST_REG_ID;
                 else
                     state_master <= ST_CHK_VMM;
@@ -805,7 +805,7 @@ len_cnt             <= std_logic_vector(len_cnt_ug);
 
 fifo_flush_final    <= fifo_flush or fifo_flush_i;
 flush_elink         <= fifo_flush_i;
-this_vmm_hit        <= bitmask_null(to_integer(unsigned(vmm_id)));
+this_vmm_empty      <= bitmask_null(to_integer(unsigned(vmm_id)));
 
 driverFIFO : DAQelinkFIFO
   PORT MAP (
