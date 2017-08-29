@@ -100,13 +100,13 @@ architecture Behavioral of packet_formation is
     signal globBcid         : std_logic_vector(15 downto 0) := x"FFFF"; --( others => '0' );
     signal precCnt          : std_logic_vector(7 downto 0)  := x"00"; --( others => '0' );
     signal globBcid_i       : std_logic_vector(15 downto 0);
-    signal globBCID_etr		: std_logic_vector(11 downto 0) := (others => '0'); --globBCID counter as it is coming from ETR
+    signal globBCID_etr     : std_logic_vector(11 downto 0) := (others => '0'); --globBCID counter as it is coming from ETR
     signal eventCounter_i   : unsigned(31 downto 0) := to_unsigned(0, 32);
     signal wait_Cnt         : integer range 0 to 31 := 0;
     signal vmmId_cnt        : integer range 0 to 7 := 0;
     signal trigLatencyCnt   : integer := 0;
     signal trigLatency      : integer := 140; -- 700ns (140x5ns)
-    signal pfBusy_i         : std_logic	:= '0';               -- control signal to be sent to ETR
+    signal pfBusy_i         : std_logic := '0';               -- control signal to be sent to ETR
 
     signal daqFIFO_wr_en_hdr    : std_logic                     := '0';
     signal daqFIFO_wr_en_drv    : std_logic                     := '0';
@@ -129,7 +129,7 @@ architecture Behavioral of packet_formation is
     signal clearValid           : std_logic                     := '0';  
 
     type stateType is (waitingForNewCycle, increaseCounter, waitForReady, waitForLatency, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
-                       sendHeaderStep3, triggerVmmReadout, waitForData, chkInhib, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, 
+                       sendHeaderStep3, triggerVmmReadout, waitForData, regVmm, chkInhib, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, 
                        isUDPDone, isTriggerOff, S2, eventDone);
     signal state            : stateType;
 
@@ -237,6 +237,7 @@ begin
                 pfBusy_i        <= '1';
                 eventCounter_i  <= eventCounter_i + 1;
                 state           <= waitForReady;
+                vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
 
             when waitForReady =>
                 if(ro_rdy = '1')then
@@ -261,12 +262,8 @@ begin
 --                --tr_hold         <= '1';     -- Prevent new triggers
                 packLen_cnt     <= x"000";      -- Reset length count
                 sel_wrenable    <= '0';
+                state           <= captureEventID;
                 vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
-                if(elink_inhibit = '1')then
-                    state <= S2;
-                else
-                    state <= captureEventID;
-                end if;
 
             when captureEventID =>      -- Form Header
                 debug_state         <= "00011";
@@ -393,12 +390,21 @@ begin
                 end if;
 
             when chkInhib =>
+                debug_state     <= "01111";
                 if(elink_inhibit = '1')then
                     state <= chkInhib;
                 else
+                    state <= regVmm;
+                end if;
+            
+            when regVmm =>
+                debug_state     <= "10000";
+                vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
+                if(elink_inhibit = '1')then
+                    state <= regVmm;
+                else
                     state <= S2;
-                end if; 
-        
+                end if;
                 
 --            when resetVMMs =>
 --                debug_state <= "01111";

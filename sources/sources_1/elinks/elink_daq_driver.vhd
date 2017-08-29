@@ -54,7 +54,6 @@ entity elink_daq_driver is
         wr_en_daq   : in  std_logic;
         trigger_cnt : in  std_logic_vector(15 downto 0);
         vmm_id      : in  std_logic_vector(2 downto 0);
-        last        : in  std_logic;
         pf_busy     : in  std_logic;
         pf_rdy      : in  std_logic;
         inhibit_pf  : out std_logic;
@@ -62,6 +61,7 @@ entity elink_daq_driver is
         ----- readout interface ---
         all_rdy     : in  std_logic;
         bitmask_null: in  std_logic_vector(7 downto 0);
+        health_bmsk : in  std_logic_vector(7 downto 0);
         ---------------------------
         ------ elink inteface -----
         empty_elink : in  std_logic;
@@ -99,6 +99,7 @@ end component;
     signal empty_elink_i    : std_logic := '0';
     signal empty_elink_s    : std_logic := '0';
     signal this_vmm_empty   : std_logic := '0';
+    signal this_vmm_healthy : std_logic := '1';
 
     signal flag_pack        : std_logic_vector(1 downto 0) := (others => '0');
     signal flag_null        : std_logic_vector(1 downto 0) := (others => '0');
@@ -144,15 +145,15 @@ end component;
     constant ROC_EOP        : std_logic_vector(7 downto 0) := "11011100"; -- K28.6
 
     -- state signals and attributes
-    type stateType_master is (ST_IDLE, ST_CHK_ALL, ST_WR_NULL, ST_WAIT_RDY, ST_WAIT_PF,  ST_CHK_VMM, ST_WAIT_CHANGE,
-                              ST_WAIT_LAST, ST_REG_ID, ST_WAIT_ELINK, ST_FLUSH_PACK, ST_FLUSH_NULL, ST_CHK_VMM_ID);
+    type stateType_master is (ST_IDLE, ST_CHK_ALL, ST_WR_NULL, ST_WAIT_RDY, ST_WAIT_PF,  ST_CHK_VMM,
+                              ST_WAIT_CHANGE, ST_WAIT_LAST, ST_REG_ID, ST_WAIT_ELINK, ST_CHK_VMM_ID);
     signal state_master     : stateType_master := ST_IDLE;
 
-    type stateType_pack is   (ST_IDLE, ST_REG_HDR, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_SEND_HDR_4,
+    type stateType_pack is  (ST_IDLE, ST_REG_HDR, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_SEND_HDR_4,
                               ST_READ_DATA_0, ST_READ_DATA_1, ST_REG_DATA_0, ST_REG_DATA_1, ST_SEND_DATA_0, ST_SEND_DATA_1, ST_SEND_DATA_2,
                               ST_CHK_FIFO, ST_WR_TRL_0, ST_WR_TRL_1, ST_WR_TRL_2, ST_WR_TRL_3, ST_WR_EOP_0, ST_WR_EOP_1, ST_DONE, ST_WAIT);
                               
-    type stateType_null is (ST_IDLE, ST_SEND_EOP, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_WR_EOP_0, ST_WR_EOP_1, ST_DONE, ST_WAIT);
+    type stateType_null is  (ST_IDLE, ST_SEND_EOP, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_WR_EOP_0, ST_WR_EOP_1, ST_DONE, ST_WAIT);
 
     signal state_pack       : stateType_pack := ST_IDLE;
     signal state_null       : stateType_null := ST_IDLE;
@@ -208,7 +209,7 @@ begin
 
             -- check if VMMs have no data
             when ST_CHK_ALL =>
-                if(bitmask_null = "11111111")then
+                if(bitmask_null = "11111111" or health_bmsk = "00000000")then
                     state_master <= ST_WR_NULL; -- go to no data cases
                 else
                     state_master <= ST_CHK_VMM; -- go to send data cases
@@ -223,33 +224,11 @@ begin
                 start_null <= '1';
                 start_pack <= '0';
                 if(null_done = '1')then
-                    state_master <= ST_FLUSH_NULL;
+                    state_master <= ST_WAIT_PF; -- was ST_FLUSH_NULL
                 else
                     state_master <= ST_WR_NULL;
                 end if;
 
-            -- flush the elink FIFOs
-            when ST_FLUSH_NULL =>
-                start_null  <= '0';
-                if(fifo_flush_i = '0')then
-                    if(wait_flush = "1111")then
-                        fifo_flush_i    <= '1';
-                        wait_flush      <= (others => '0');
-                    else
-                        fifo_flush_i    <= '0';
-                        wait_flush      <= wait_flush + 1;
-                    end if;
-                    state_master <= ST_FLUSH_NULL;
-                else
-                    if(wait_flush = "1111")then
-                        fifo_flush_i    <= '0';
-                        wait_flush      <= (others => '0');
-                        state_master    <= ST_WAIT_PF;
-                    else
-                        fifo_flush_i    <= '1';
-                        wait_flush      <= wait_flush + 1;
-                    end if;
-                end if;  
             ----------------------------------
             ----------------------------------
             ----------------------------------
@@ -263,9 +242,9 @@ begin
                 inhibit_pf      <= '1';
                 wait_flush      <= (others => '0');
                 fifo_flush_i    <= '0';
-                if(this_vmm_empty = '0')then -- data in this one
+                if(this_vmm_empty = '0' and this_vmm_healthy = '1')then -- data in this one + healthy link
                     state_master <= ST_WAIT_RDY;
-                elsif(this_vmm_empty = '1')then -- no data in this one
+                elsif(this_vmm_empty = '1' or this_vmm_healthy = '0')then -- no data in this one or unhealthy link
                     state_master <= ST_REG_ID;
                 else
                     state_master <= ST_CHK_VMM;
@@ -301,7 +280,7 @@ begin
             -- release the PF inhibitor and wait for all VMM data to be written in the FIFO
             when ST_WAIT_LAST =>
                 inhibit_pf <= '0'; -- release the PF inhibitor and let data get into our FIFO
-                if(pf_rdy = '0')then -- this was 'last'.
+                if(pf_rdy = '0')then
                     state_master <= ST_WAIT_ELINK;
                 else
                     state_master <= ST_WAIT_LAST;
@@ -313,36 +292,15 @@ begin
                 start_null <= '0';
                 start_pack <= '1'; 
                 if(pack_done = '1' and empty_elink_s = '1' and fifo_empty = '1')then
-                    state_master <= ST_FLUSH_PACK;
+                    state_master <= ST_CHK_VMM_ID; -- was ST_FLUSH_PACK
                 else
                     state_master <= ST_WAIT_ELINK;
                 end if;
 
-            -- wait before flushing, then flush, then go back to check the VMM
-            when ST_FLUSH_PACK =>
-                start_pack  <= '0';
-                if(fifo_flush_i = '0')then
-                    if(wait_flush = "1111")then
-                        fifo_flush_i    <= '1';
-                        wait_flush      <= (others => '0');
-                    else
-                        fifo_flush_i    <= '0';
-                        wait_flush      <= wait_flush + 1;
-                    end if;
-                    state_master <= ST_FLUSH_PACK;
-                else
-                    if(wait_flush = "1111")then
-                        fifo_flush_i    <= '0';
-                        wait_flush      <= (others => '0');
-                        state_master    <= ST_CHK_VMM_ID;
-                    else
-                        fifo_flush_i    <= '1';
-                        wait_flush      <= wait_flush + 1;
-                    end if;
-                end if;
-
             -- has the last VMM sent its data?
             when ST_CHK_VMM_ID =>
+                start_null      <= '0';
+                start_pack      <= '0';
                 if(vmm_id = "111")then
                     state_master <= ST_WAIT_PF;
                 else
@@ -402,6 +360,7 @@ begin
             pack_done   <= '0';
             wait_cnt    <= (others => '0');
             cnt_mop     <= (others => '0');
+            len_cnt_ug  <= (others => '0');
             state_pack  <= ST_IDLE;
         else
             case state_pack is
@@ -806,6 +765,7 @@ len_cnt             <= std_logic_vector(len_cnt_ug);
 fifo_flush_final    <= fifo_flush or fifo_flush_i;
 flush_elink         <= fifo_flush_i;
 this_vmm_empty      <= bitmask_null(to_integer(unsigned(vmm_id)));
+this_vmm_healthy    <= health_bmsk(to_integer(unsigned(vmm_id)));
 
 driverFIFO : DAQelinkFIFO
   PORT MAP (

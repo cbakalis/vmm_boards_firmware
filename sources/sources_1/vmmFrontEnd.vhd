@@ -454,6 +454,7 @@ architecture Behavioral of vmmFrontEnd is
     signal daq_vmm_ena_wen_enable   : std_logic_vector(8 downto 1) := (others => '0');
     signal daq_cktk_out_enable      : std_logic_vector(8 downto 1) := (others => '0');
     signal linkHealth_bmsk          : std_logic_vector(8 downto 1) := (others => '0');
+    signal linkHealth_bmsk_i        : std_logic_vector(7 downto 0) := (others => '0');
     signal UDPDone                  : std_logic;
     signal ckbc_enable              : std_logic := '0';
     signal cktp_enable              : std_logic := '0';
@@ -590,8 +591,8 @@ architecture Behavioral of vmmFrontEnd is
     signal swap_rx              : std_logic := '0';
   
     signal pattern_enable       : std_logic := '0'; -- DEFAULT: disable pattern
-    signal daq_enable_vio       : std_logic := '0'; -- DEFAULT: disable daq
-    signal daq_enable_elink     : std_logic := '0'; -- DEFAULT: disable daq
+    signal daq_enable_vio       : std_logic := '1'; -- DEFAULT: enable daq
+    signal daq_enable_elink     : std_logic := '1'; -- DEFAULT: enable daq
     signal loopback_enable      : std_logic := '0'; -- DEFAULT: disable loopback
     
     signal elink_DAQ_tx         : std_logic := '0';
@@ -779,12 +780,8 @@ architecture Behavioral of vmmFrontEnd is
 --    attribute mark_debug of pf_dbg_st                 : signal is "TRUE";
 --    attribute mark_debug of FIFO2UDP_state            : signal is "TRUE";
 --    attribute mark_debug of UDPDone                   : signal is "TRUE";
---    attribute mark_debug of CKBC_glbl                 : signal is "TRUE";
 --    attribute mark_debug of tr_out_i                  : signal is "TRUE";
---    attribute mark_debug of conf_state                : signal is "TRUE";
 --    attribute mark_debug of rd_ena_buff               : signal is "TRUE";
---    attribute mark_debug of vmmWord_i                 : signal is "TRUE";
---    attribute mark_debug of CKTP_glbl                 : signal is "TRUE";
 --    attribute mark_debug of level_0                   : signal is "TRUE";
 --    attribute mark_debug of rst_l0_pf                 : signal is "TRUE";
 --    attribute mark_debug of vmmWordReady_i            : signal is "TRUE";
@@ -1507,10 +1504,10 @@ architecture Behavioral of vmmFrontEnd is
         ------ Readout Interface --------
         ro_rdy          : in  std_logic;                    -- every VMM has been read out
         bitmask_null    : in  std_logic_vector(7 downto 0); -- which VMMs have data?
+        health_bitmask  : in  std_logic_vector(7 downto 0); -- which VMMs have a healthy link?
         ---------------------------------
         --------- PF Interface ----------
         din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
-        din_last        : in  std_logic;                     -- last packet
         inhibit_pf      : out std_logic;                     -- pf inhibitor
         trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)
         vmm_id          : in  std_logic_vector(2 downto 0);  -- vmm that is being read
@@ -2240,11 +2237,11 @@ DAQ_ELINK: elink_wrapper
         ------ Readout Interface --------
         ro_rdy          => ro_rdy,
         bitmask_null    => bitmask_null,
+        health_bitmask  => linkHealth_bmsk_i,
         ---------------------------------
         --------- PF Interface ----------
         din_daq         => daq_data_out_i,
         wr_en_daq       => daq_wr_en_i,
-        din_last        => end_packet_daq_int,
         trigger_cnt     => trigger_cnt,
         inhibit_pf      => pfInhibit_i,
         pf_busy         => pfBusy_i,
@@ -2779,6 +2776,15 @@ end process;
     vmm_ena_vec_obuf(6) <= vmm_ena_all;
     vmm_ena_vec_obuf(7) <= vmm_ena_all;
     vmm_ena_vec_obuf(8) <= vmm_ena_all;
+    
+    linkHealth_bmsk_i(7) <= linkHealth_bmsk(8);
+    linkHealth_bmsk_i(6) <= linkHealth_bmsk(7);
+    linkHealth_bmsk_i(5) <= linkHealth_bmsk(6);
+    linkHealth_bmsk_i(4) <= linkHealth_bmsk(5);
+    linkHealth_bmsk_i(3) <= linkHealth_bmsk(4);
+    linkHealth_bmsk_i(2) <= linkHealth_bmsk(3);
+    linkHealth_bmsk_i(1) <= linkHealth_bmsk(2);
+    linkHealth_bmsk_i(0) <= linkHealth_bmsk(1);
 
 --ila_top: ila_top_level
 --    port map (

@@ -68,10 +68,10 @@ port(
     ------ Readout Interface --------
     ro_rdy          : in  std_logic;                    -- every VMM has been read out
     bitmask_null    : in  std_logic_vector(7 downto 0); -- which VMMs have data?
+    health_bitmask  : in  std_logic_vector(7 downto 0); -- which VMMs have a healthy link?
     ---------------------------------
     --------- PF Interface ----------
     din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
-    din_last        : in  std_logic;                     -- last packet
     inhibit_pf      : out std_logic;                     -- pf inhibitor
     trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)
     vmm_id          : in  std_logic_vector(2 downto 0);  -- vmm that is being read
@@ -111,7 +111,6 @@ component elink_daq_driver
     wr_en_daq   : in  std_logic;
     trigger_cnt : in  std_logic_vector(15 downto 0);
     vmm_id      : in  std_logic_vector(2 downto 0);
-    last        : in  std_logic;
     pf_busy     : in  std_logic;
     pf_rdy      : in  std_logic;
     inhibit_pf  : out std_logic;
@@ -119,6 +118,7 @@ component elink_daq_driver
     ----- readout interface ---
     all_rdy     : in  std_logic;
     bitmask_null: in  std_logic_vector(7 downto 0);
+    health_bmsk : in  std_logic_vector(7 downto 0);
     ---------------------------
     ------ elink inteface -----
     empty_elink : in  std_logic;
@@ -230,18 +230,18 @@ end component;
     attribute ASYNC_REG of rst_i_rx_s1    : signal is "true";
     
     -- debugging
-    attribute mark_debug of dout_elink2fifo     : signal is "true";
-    attribute dont_touch of dout_elink2fifo     : signal is "true";
-    attribute mark_debug of rd_ena              : signal is "true";
+--    attribute mark_debug of dout_elink2fifo     : signal is "true";
+--    attribute dont_touch of dout_elink2fifo     : signal is "true";
+--    attribute mark_debug of rd_ena              : signal is "true";
     
-    attribute mark_debug of empty_elink_tx      : signal is "true";
-    attribute mark_debug of empty_elink_rx      : signal is "true";
+--    attribute mark_debug of empty_elink_tx      : signal is "true";
+--    attribute mark_debug of empty_elink_rx      : signal is "true";
     
 --    attribute mark_debug of elink_tx_i          : signal is "true";
 --    attribute mark_debug of elink_rx_i          : signal is "true";
     
-    attribute mark_debug of data_elink_tx       : signal is "true";
-    attribute mark_debug of wr_en_elink_tx      : signal is "true";
+--    attribute mark_debug of data_elink_tx       : signal is "true";
+--    attribute mark_debug of wr_en_elink_tx      : signal is "true";
     
 
 begin
@@ -273,7 +273,6 @@ port map(
     wr_en_daq   => wr_en_daq,
     trigger_cnt => trigger_cnt,
     vmm_id      => vmm_id,
-    last        => din_last,
     pf_busy     => pf_busy,
     pf_rdy      => pf_rdy,
     inhibit_pf  => inhibit_pf,
@@ -281,6 +280,7 @@ port map(
     ----- readout interface ---
     all_rdy     => ro_rdy,
     bitmask_null=> bitmask_null,
+    health_bmsk => health_bitmask,
     ---------------------------
     ------ elink inteface -----
     empty_elink => empty_elink_tx,

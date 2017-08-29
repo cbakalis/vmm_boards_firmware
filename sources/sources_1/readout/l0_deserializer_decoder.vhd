@@ -123,8 +123,9 @@ architecture RTL of l0_deserializer_decoder is
 
     -- comma counter and wr_en counter
     signal cnt_commas           : unsigned(4 downto 0) := (others => '0');
-    signal cnt_wr_en            : unsigned(1 downto 0) := (others => '0');
-    constant cnt_thr            : unsigned(4 downto 0) := "11111"; -- 6 consecutive commas              
+    signal cnt_wr_en            : unsigned(2 downto 0) := (others => '0');
+    constant cnt_thr            : unsigned(4 downto 0) := "11111"; -- 6 consecutive commas   
+    signal null_event_i         : std_logic := '1';
 
 begin
 
@@ -337,19 +338,19 @@ cnt_wr_proc: process(clk_ckdt)
 begin
     if(rising_edge(clk_ckdt))then
         if(inhib_wr = '0')then
-            if(wr_en_i = '1' and cnt_wr_en /= "11")then
+            if(wr_en_i = '1' and cnt_wr_en /= "111")then
                 cnt_wr_en <= cnt_wr_en + 1;
             else 
-                cnt_wr_en <= cnt_wr_en; -- keep at this state until assertion of inhibit
+                cnt_wr_en <= cnt_wr_en; -- stay at this state until assertion of inhibit
             end if;
         else
             cnt_wr_en <= (others => '0');
         end if;
 
-        if(cnt_wr_en > "01")then
-            null_event <= '0'; -- keep at this state until assertion of inhibit
+        if(cnt_wr_en > "011")then
+            null_event_i <= '0'; -- stay at this state until assertion of inhibit
         else
-            null_event <= '1';
+            null_event_i <= '1';
         end if;
     end if;
 end process;
@@ -360,5 +361,6 @@ end process;
   align_sel_n   <= align_sreg_n(0);
   dout_dec      <= L0_8B_data_i;
   wr_en         <= wr_en_i;
+  null_event    <= null_event_i;
   
 end RTL;
