@@ -215,6 +215,7 @@ end component;
     signal empty_elink_tx       : std_logic := '0';
     signal empty_elink_rx       : std_logic := '0';
     signal dout_elink2fifo      : std_logic_vector(15 downto 0) := (others => '0');
+    signal dout_elink2fifo_inv  : std_logic_vector(15 downto 0) := (others => '0'); -- byte-reversed
     signal half_full_rx         : std_logic := '0';
     signal driver_ena           : std_logic := '0';
     signal rd_ena               : std_logic := '0';
@@ -230,9 +231,9 @@ end component;
     attribute ASYNC_REG of rst_i_rx_s1    : signal is "true";
     
     -- debugging
---    attribute mark_debug of dout_elink2fifo     : signal is "true";
---    attribute dont_touch of dout_elink2fifo     : signal is "true";
---    attribute mark_debug of rd_ena              : signal is "true";
+    attribute mark_debug of dout_elink2fifo_inv     : signal is "true";
+    attribute dont_touch of dout_elink2fifo_inv     : signal is "true";
+    attribute mark_debug of rd_ena                  : signal is "true";
     
 --    attribute mark_debug of empty_elink_tx      : signal is "true";
 --    attribute mark_debug of empty_elink_rx      : signal is "true";
@@ -483,6 +484,22 @@ end process;
   tester_ena        <= elink_locked and pattern_ena;
   driver_ena        <= elink_locked and daq_ena;
   flush_tx_final    <= flush_tx or flush_elink_i;
+  dout_elink2fifo_inv(15) <= dout_elink2fifo(7);
+  dout_elink2fifo_inv(14) <= dout_elink2fifo(6);
+  dout_elink2fifo_inv(13) <= dout_elink2fifo(5);
+  dout_elink2fifo_inv(12) <= dout_elink2fifo(4);
+  dout_elink2fifo_inv(11) <= dout_elink2fifo(3);
+  dout_elink2fifo_inv(10) <= dout_elink2fifo(2);
+  dout_elink2fifo_inv(9) <= dout_elink2fifo(1);
+  dout_elink2fifo_inv(8) <= dout_elink2fifo(0);
+  dout_elink2fifo_inv(7) <= dout_elink2fifo(15);
+  dout_elink2fifo_inv(6) <= dout_elink2fifo(14);
+  dout_elink2fifo_inv(5) <= dout_elink2fifo(13);
+  dout_elink2fifo_inv(4) <= dout_elink2fifo(12);
+  dout_elink2fifo_inv(3) <= dout_elink2fifo(11);
+  dout_elink2fifo_inv(2) <= dout_elink2fifo(10);
+  dout_elink2fifo_inv(1) <= dout_elink2fifo(9);
+  dout_elink2fifo_inv(0) <= dout_elink2fifo(8);
   
   sel_din(1)        <= pattern_ena;
   sel_din(0)        <= daq_ena;
