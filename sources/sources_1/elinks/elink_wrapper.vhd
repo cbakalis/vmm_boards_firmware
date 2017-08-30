@@ -102,29 +102,27 @@ component elink_daq_driver
     Port(
     ---------------------------
     ---- general interface ---- 
-    clk_in      : in  std_logic;
-    fifo_flush  : in  std_logic;
-    driver_ena  : in  std_logic;
+    clk_in          : in  std_logic;
+    fifo_flush      : in  std_logic;
+    driver_ena      : in  std_logic;
+    use_timeout     : in  std_logic;
+    timeout_limit   : in  std_logic_vector(15 downto 0);
     ---------------------------
     ------- pf interface ------
-    din_daq     : in  std_logic_vector(15 downto 0);
-    wr_en_daq   : in  std_logic;
-    trigger_cnt : in  std_logic_vector(15 downto 0);
-    vmm_id      : in  std_logic_vector(2 downto 0);
-    pf_busy     : in  std_logic;
-    pf_rdy      : in  std_logic;
-    inhibit_pf  : out std_logic;
-    ---------------------------
-    ----- readout interface ---
-    all_rdy     : in  std_logic;
-    bitmask_null: in  std_logic_vector(7 downto 0);
-    health_bmsk : in  std_logic_vector(7 downto 0);
+    din_daq         : in  std_logic_vector(15 downto 0);
+    wr_en_daq       : in  std_logic;
+    din_aux         : in  std_logic_vector(15 downto 0);
+    wr_en_aux       : in  std_logic;
+    trigger_cnt     : in  std_logic_vector(15 downto 0);
+    start_null      : in  std_logic;
+    start_pack      : in  std_logic;
+    bitmask_null    : in  std_logic_vector(7 downto 0); 
+    elink_done      : out std_logic;
     ---------------------------
     ------ elink inteface -----
-    empty_elink : in  std_logic;
-    wr_en_elink : out std_logic;
-    flush_elink : out std_logic;
-    dout_elink  : out std_logic_vector(17 downto 0)
+    empty_elink     : in  std_logic;
+    wr_en_elink     : out std_logic;
+    dout_elink      : out std_logic_vector(17 downto 0)
     );
 end component;
 
@@ -195,9 +193,7 @@ end component;
     signal rst_i_rx             : std_logic := '1';
     signal flush_rx             : std_logic := '1';
     signal flush_tx             : std_logic := '1';
-    signal flush_tx_final       : std_logic := '1';
     signal rst_pf_i             : std_logic := '1';
-    signal flush_elink_i        : std_logic := '1';
     signal cnt_init_rx          : integer   := 0;
     signal cnt_init_tx          : integer   := 0;
 
@@ -265,29 +261,27 @@ DAQ2ELINK_instance: elink_daq_driver
 port map(
     ---------------------------
     ---- general interface ---- 
-    clk_in      => user_clock,
-    fifo_flush  => flush_tx,
-    driver_ena  => driver_ena,
+    clk_in          => user_clock,
+    fifo_flush      => flush_tx,
+    driver_ena      => driver_ena,
+    use_timeout     => timeout_ena,
+    timeout_limit   => timeout_limit,
     ---------------------------
     ------- pf interface ------
-    din_daq     => din_daq,
-    wr_en_daq   => wr_en_daq,
-    trigger_cnt => trigger_cnt,
-    vmm_id      => vmm_id,
-    pf_busy     => pf_busy,
-    pf_rdy      => pf_rdy,
-    inhibit_pf  => inhibit_pf,
-    ---------------------------
-    ----- readout interface ---
-    all_rdy     => ro_rdy,
-    bitmask_null=> bitmask_null,
-    health_bmsk => health_bitmask,
+    din_daq         => din_daq,
+    wr_en_daq       => wr_en_daq,
+    din_aux         => din_aux,
+    wr_en_aux       => wr_en_aux,
+    trigger_cnt     => trigger_cnt,
+    start_null      => start_null,
+    start_pack      => start_pack,
+    bitmask_null    => bitmask_null,
+    elink_done      => elink_done,
     ---------------------------
     ------ elink inteface -----
-    empty_elink => empty_elink_tx,
-    wr_en_elink => wr_en_elink_daq,
-    flush_elink => flush_elink_i,
-    dout_elink  => data_elink_daq
+    empty_elink     => empty_elink_tx,
+    wr_en_elink     => wr_en_elink_daq,
+    dout_elink      => data_elink_daq
     );
     
 elink_tx_instance: FIFO2Elink
@@ -299,7 +293,7 @@ port map(
     clk160          => clk_160,
     clk320          => clk_320,
     rst             => rst_i_tx_s1,
-    fifo_flush      => flush_tx_final,
+    fifo_flush      => flush_tx,
     swap_output     => swap_tx,
     ------   
     efifoDin        => data_elink_tx,
@@ -481,25 +475,26 @@ begin
     end if;
 end process;
  
-  tester_ena        <= elink_locked and pattern_ena;
-  driver_ena        <= elink_locked and daq_ena;
-  flush_tx_final    <= flush_tx or flush_elink_i;
+  tester_ena    <= elink_locked and pattern_ena;
+  driver_ena    <= elink_locked and daq_ena;
+
+  -- reverse the byte order
   dout_elink2fifo_inv(15) <= dout_elink2fifo(7);
   dout_elink2fifo_inv(14) <= dout_elink2fifo(6);
   dout_elink2fifo_inv(13) <= dout_elink2fifo(5);
   dout_elink2fifo_inv(12) <= dout_elink2fifo(4);
   dout_elink2fifo_inv(11) <= dout_elink2fifo(3);
   dout_elink2fifo_inv(10) <= dout_elink2fifo(2);
-  dout_elink2fifo_inv(9) <= dout_elink2fifo(1);
-  dout_elink2fifo_inv(8) <= dout_elink2fifo(0);
-  dout_elink2fifo_inv(7) <= dout_elink2fifo(15);
-  dout_elink2fifo_inv(6) <= dout_elink2fifo(14);
-  dout_elink2fifo_inv(5) <= dout_elink2fifo(13);
-  dout_elink2fifo_inv(4) <= dout_elink2fifo(12);
-  dout_elink2fifo_inv(3) <= dout_elink2fifo(11);
-  dout_elink2fifo_inv(2) <= dout_elink2fifo(10);
-  dout_elink2fifo_inv(1) <= dout_elink2fifo(9);
-  dout_elink2fifo_inv(0) <= dout_elink2fifo(8);
+  dout_elink2fifo_inv(9)  <= dout_elink2fifo(1);
+  dout_elink2fifo_inv(8)  <= dout_elink2fifo(0);
+  dout_elink2fifo_inv(7)  <= dout_elink2fifo(15);
+  dout_elink2fifo_inv(6)  <= dout_elink2fifo(14);
+  dout_elink2fifo_inv(5)  <= dout_elink2fifo(13);
+  dout_elink2fifo_inv(4)  <= dout_elink2fifo(12);
+  dout_elink2fifo_inv(3)  <= dout_elink2fifo(11);
+  dout_elink2fifo_inv(2)  <= dout_elink2fifo(10);
+  dout_elink2fifo_inv(1)  <= dout_elink2fifo(9);
+  dout_elink2fifo_inv(0)  <= dout_elink2fifo(8);
   
   sel_din(1)        <= pattern_ena;
   sel_din(0)        <= daq_ena;
