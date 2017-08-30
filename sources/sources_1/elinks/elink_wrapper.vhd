@@ -36,6 +36,10 @@
 -----------------------------------------------------------------------------------------
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
+use work.axi.all;
+use work.ipv4_types.all;
+use work.arp_types.all;
+
 
 entity elink_wrapper is
 generic(DataRate        : integer;  -- 80 / 160 / 320 MHz
@@ -53,6 +57,7 @@ port(
     swap_tx         : in  std_logic;  -- swap the tx-side bits
     swap_rx         : in  std_logic;  -- swap the rx-side bits
     ttc_detected    : out std_logic;  -- TTC signal detected
+    error_led       : out std_logic;  -- rx data flow is too high
     ---------------------------------
     -------- E-link clocking --------
     clk_40          : in  std_logic;
@@ -64,6 +69,11 @@ port(
     ---- E-link Serial Interface ----
     elink_tx        : out std_logic;                    -- elink tx bus
     elink_rx        : in  std_logic;                    -- elink rx bus
+    ---------------------------------
+    -------- UDP Interface ----------
+    udp_tx_dout_rdy : in std_logic;
+    udp_tx_start    : out std_logic;
+    udp_txi         : out udp_tx_type;
     ---------------------------------
     ------ Readout Interface --------
     ro_rdy          : in  std_logic;                    -- every VMM has been read out
@@ -186,6 +196,27 @@ port (
     ------
     );
 end component;
+
+component elink2UDP
+port(
+        ---------------------------
+    ---- General Interface ----
+    clk_elink       : in  std_logic;
+    clk_udp         : in  std_logic;
+    rst_rx          : in  std_logic;
+    error_led       : out std_logic; -- indicating the data flow is too high
+    ---------------------------
+    ---- Elink Interface ------
+    empty_elink     : in  std_logic;
+    rd_en_elink     : out std_logic;
+    din_elink       : in  std_logic_vector(15 downto 0);
+    ---------------------------
+    ---- UDP Interface --------
+    udp_tx_dout_rdy : in std_logic;
+    udp_tx_start    : out std_logic;
+    udp_txi         : out udp_tx_type
+    );
+end component;
     
     signal rst_i_tx             : std_logic := '1';
     signal rst_i_tx_s0          : std_logic := '1';
@@ -247,72 +278,72 @@ end component;
 
 begin
 
-testing_instance: elink_daq_tester
-port map(
-    -----------------------------
-    ---- general interface ------
-    clk_in          => user_clock, -- must be the same with efifoWclk of FIFO2ELINK
-    rst             => rst_i_tx,
-    tester_ena      => tester_ena,
-    ------------------------------
-    ------ elink interface -------
-    empty_elink     => empty_elink_tx,
-    wr_en           => wr_en_elink_tester,
-    dout            => data_elink_tester
-    );
+--testing_instance: elink_daq_tester
+--port map(
+--    -----------------------------
+--    ---- general interface ------
+--    clk_in          => user_clock, -- must be the same with efifoWclk of FIFO2ELINK
+--    rst             => rst_i_tx,
+--    tester_ena      => tester_ena,
+--    ------------------------------
+--    ------ elink interface -------
+--    empty_elink     => empty_elink_tx,
+--    wr_en           => wr_en_elink_tester,
+--    dout            => data_elink_tester
+--    );
     
-DAQ2ELINK_instance: elink_daq_driver
-port map(
-    ---------------------------
-    ---- general interface ---- 
-    clk_in      => user_clock,
-    fifo_flush  => flush_tx,
-    driver_ena  => driver_ena,
-    ---------------------------
-    ------- pf interface ------
-    din_daq     => din_daq,
-    wr_en_daq   => wr_en_daq,
-    trigger_cnt => trigger_cnt,
-    vmm_id      => vmm_id,
-    pf_busy     => pf_busy,
-    pf_rdy      => pf_rdy,
-    inhibit_pf  => inhibit_pf,
-    ---------------------------
-    ----- readout interface ---
-    all_rdy     => ro_rdy,
-    bitmask_null=> bitmask_null,
-    health_bmsk => health_bitmask,
-    ---------------------------
-    ------ elink inteface -----
-    empty_elink => empty_elink_tx,
-    wr_en_elink => wr_en_elink_daq,
-    flush_elink => flush_elink_i,
-    dout_elink  => data_elink_daq
-    );
+--DAQ2ELINK_instance: elink_daq_driver
+--port map(
+--    ---------------------------
+--    ---- general interface ---- 
+--    clk_in      => user_clock,
+--    fifo_flush  => flush_tx,
+--    driver_ena  => driver_ena,
+--    ---------------------------
+--    ------- pf interface ------
+--    din_daq     => din_daq,
+--    wr_en_daq   => wr_en_daq,
+--    trigger_cnt => trigger_cnt,
+--    vmm_id      => vmm_id,
+--    pf_busy     => pf_busy,
+--    pf_rdy      => pf_rdy,
+--    inhibit_pf  => inhibit_pf,
+--    ---------------------------
+--    ----- readout interface ---
+--    all_rdy     => ro_rdy,
+--    bitmask_null=> bitmask_null,
+--    health_bmsk => health_bitmask,
+--    ---------------------------
+--    ------ elink inteface -----
+--    empty_elink => empty_elink_tx,
+--    wr_en_elink => wr_en_elink_daq,
+--    flush_elink => flush_elink_i,
+--    dout_elink  => data_elink_daq
+--    );
     
-elink_tx_instance: FIFO2Elink
-generic map(OutputDataRate => DataRate, -- 80 / 160 / 320 MHz
-            elinkEncoding  => elinkEncoding) -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
-port map(  
-    clk40           => clk_40,
-    clk80           => clk_80,
-    clk160          => clk_160,
-    clk320          => clk_320,
-    rst             => rst_i_tx_s1,
-    fifo_flush      => flush_tx_final,
-    swap_output     => swap_tx,
-    ------   
-    efifoDin        => data_elink_tx,
-    efifoWe         => wr_en_elink_tx,
-    efifoPfull      => full_elink_tx,
-    efifoEmpty      => empty_elink_tx,
-    efifoWclk       => user_clock, -- must be the same with clk_in of tester and driver
-    ------
-    DATA1bitOUT     => elink_tx_i,
-    elink2bit       => open,
-    elink4bit       => open,
-    elink8bit       => open
-    );
+--elink_tx_instance: FIFO2Elink
+--generic map(OutputDataRate => DataRate, -- 80 / 160 / 320 MHz
+--            elinkEncoding  => elinkEncoding) -- 00-direct data / 01-8b10b encoding / 10-HDLC encoding 
+--port map(  
+--    clk40           => clk_40,
+--    clk80           => clk_80,
+--    clk160          => clk_160,
+--    clk320          => clk_320,
+--    rst             => rst_i_tx_s1,
+--    fifo_flush      => flush_tx_final,
+--    swap_output     => swap_tx,
+--    ------   
+--    efifoDin        => data_elink_tx,
+--    efifoWe         => wr_en_elink_tx,
+--    efifoPfull      => full_elink_tx,
+--    efifoEmpty      => empty_elink_tx,
+--    efifoWclk       => user_clock, -- must be the same with clk_in of tester and driver
+--    ------
+--    DATA1bitOUT     => elink_tx_i,
+--    elink2bit       => open,
+--    elink4bit       => open,
+--    elink8bit       => open
+--    );
 
 elink_rx_instance: Elink2FIFO
 generic map( InputDataRate  => DataRate, -- 80 / 160 / 320 MHz
@@ -326,7 +357,7 @@ port map(
     fifo_flush  => flush_rx,
     swap_input  => swap_rx,
     ------
-    DATA1bitIN  => elink_rx_i,
+    DATA1bitIN  => elink_rx,
     elink2bit   => (others => '0'),
     elink4bit   => (others => '0'),
     elink8bit   => (others => '0'),
@@ -340,98 +371,106 @@ port map(
     ------
     );
 
+elink2UDP_instance: elink2UDP
+port map(
+    ---------------------------
+    ---- General Interface ----
+    clk_elink       => clk_160,
+    clk_udp         => user_clock,
+    rst_rx          => rst_i_rx_s1,
+    error_led       => error_led, -- indicating the data flow is too high
+    ---------------------------
+    ---- Elink Interface ------
+    empty_elink     => empty_elink_rx,
+    rd_en_elink     => rd_ena,
+    din_elink       => dout_elink2fifo_inv,
+    ---------------------------
+    ---- UDP Interface --------
+    udp_tx_dout_rdy => udp_tx_dout_rdy,
+    udp_tx_start    => udp_tx_start,
+    udp_txi         => udp_txi
+    );
+
 -- use TTC signal recognition module
 UseTTC: if elinkEncoding = "00" generate
 -- ttc_detected <= '1';
 -- TBD
 end generate UseTTC; 
 
--- MUX that chooses between data from the pattern generator, or the DAQ data from the VMMs
-elinkDinMux: process(sel_din, pattern_ena, daq_ena, data_elink_daq, wr_en_elink_daq, data_elink_tester, wr_en_elink_tester)
-begin
-    case sel_din is
-    when "00" =>
-        data_elink_tx  <= (others => '0');
-        wr_en_elink_tx <= '0';
-    when "01"    =>
-        data_elink_tx  <= data_elink_daq;
-        wr_en_elink_tx <= wr_en_elink_daq;
-    when "10"    =>
-        data_elink_tx  <= data_elink_tester;
-        wr_en_elink_tx <= wr_en_elink_tester;
-    when "11" =>
-        data_elink_tx  <= (others => '0');
-        wr_en_elink_tx <= '0';
-    when others =>
-        data_elink_tx  <= (others => '0');
-        wr_en_elink_tx <= '0';
-    end case;
-end process;
+---- MUX that chooses between data from the pattern generator, or the DAQ data from the VMMs
+--elinkDinMux: process(sel_din, pattern_ena, daq_ena, data_elink_daq, wr_en_elink_daq, data_elink_tester, wr_en_elink_tester)
+--begin
+--    case sel_din is
+--    when "00" =>
+--        data_elink_tx  <= (others => '0');
+--        wr_en_elink_tx <= '0';
+--    when "01"    =>
+--        data_elink_tx  <= data_elink_daq;
+--        wr_en_elink_tx <= wr_en_elink_daq;
+--    when "10"    =>
+--        data_elink_tx  <= data_elink_tester;
+--        wr_en_elink_tx <= wr_en_elink_tester;
+--    when "11" =>
+--        data_elink_tx  <= (others => '0');
+--        wr_en_elink_tx <= '0';
+--    when others =>
+--        data_elink_tx  <= (others => '0');
+--        wr_en_elink_tx <= '0';
+--    end case;
+--end process;
 
--- MUX that chooses the loopback state
-loopMux: process(loopback_ena, elink_rx, elink_tx_i)
-begin
-    case loopback_ena is
-    when '0' =>
-        elink_tx    <= elink_tx_i;
-        elink_rx_i  <= elink_rx;
-    when '1' =>
-        elink_tx    <= '0';
-        elink_rx_i  <= elink_tx_i;
-    when others =>
-        elink_tx    <= '0';
-        elink_rx_i  <= '0';
-    end case;
-end process;
-
--- reads data from the Elink2FIFO module when it is not empty
-readFIFOproc: process(clk_160)
-begin
-    if(rising_edge(clk_160))then
-        if(elink_locked = '1' and empty_elink_rx = '0')then
-            rd_ena <= '1';
-        else
-            rd_ena <= '0';
-        end if;
-    end if;
-end process;
+---- MUX that chooses the loopback state
+--loopMux: process(loopback_ena, elink_rx, elink_tx_i)
+--begin
+--    case loopback_ena is
+--    when '0' =>
+--        elink_tx    <= elink_tx_i;
+--        elink_rx_i  <= elink_rx;
+--    when '1' =>
+--        elink_tx    <= '0';
+--        elink_rx_i  <= elink_tx_i;
+--    when others =>
+--        elink_tx    <= '0';
+--        elink_rx_i  <= '0';
+--    end case;
+--end process;
 
 -- creates an internal reset pulse for FIFO2Elink initialization/reset
-initRstProc_tx: process(user_clock)
-begin
-    if(rising_edge(user_clock))then
-        if(glbl_rst = '1' or rst_tx = '1')then
-            cnt_init_tx <= 0;
-            rst_i_tx    <= '1';
-            flush_tx    <= '1';
-        else
-            if(elink_locked = '1')then
-                case cnt_init_tx is
-                when 0 to 39  =>
-                    cnt_init_tx <= cnt_init_tx + 1;
-                    rst_i_tx    <= '1';
-                    flush_tx    <= '1';
-                when 40 to 59 =>    -- first release the flush signal
-                    cnt_init_tx <= cnt_init_tx + 1; 
-                    rst_i_tx    <= '1';
-                    flush_tx    <= '0';
-                when 60 =>          -- remain in this state until reset by top
-                    cnt_init_tx <= 60;
-                    rst_i_tx    <= '0';
-                    flush_tx    <= '0';
-                when others =>
-                    cnt_init_tx <= 0;
-                    rst_i_tx    <= '1';
-                    flush_tx    <= '1';
-                end case;
-            else
-                cnt_init_tx <= 0;
-                rst_i_tx    <= '1';
-                flush_tx    <= '1';
-            end if;
-        end if; 
-    end if;
-end process;
+--initRstProc_tx: process(user_clock)
+--begin
+--    if(rising_edge(user_clock))then
+--        if(glbl_rst = '1' or rst_tx = '1')then
+--            cnt_init_tx <= 0;
+--            rst_i_tx    <= '1';
+--            flush_tx    <= '1';
+--        else
+--            if(elink_locked = '1')then
+--                case cnt_init_tx is
+--                when 0 to 39  =>
+--                    cnt_init_tx <= cnt_init_tx + 1;
+--                    rst_i_tx    <= '1';
+--                    flush_tx    <= '1';
+--                when 40 to 59 =>    -- first release the flush signal
+--                    cnt_init_tx <= cnt_init_tx + 1; 
+--                    rst_i_tx    <= '1';
+--                    flush_tx    <= '0';
+--                when 60 =>          -- remain in this state until reset by top
+--                    cnt_init_tx <= 60;
+--                    rst_i_tx    <= '0';
+--                    flush_tx    <= '0';
+--                when others =>
+--                    cnt_init_tx <= 0;
+--                    rst_i_tx    <= '1';
+--                    flush_tx    <= '1';
+--                end case;
+--            else
+--                cnt_init_tx <= 0;
+--                rst_i_tx    <= '1';
+--                flush_tx    <= '1';
+--            end if;
+--        end if; 
+--    end if;
+--end process;
 
 -- creates an internal reset pulse for Elink2FIFO initialization/reset
 initRstProc_rx: process(user_clock)
@@ -484,6 +523,8 @@ end process;
   tester_ena        <= elink_locked and pattern_ena;
   driver_ena        <= elink_locked and daq_ena;
   flush_tx_final    <= flush_tx or flush_elink_i;
+
+  -- inverse the bytes
   dout_elink2fifo_inv(15) <= dout_elink2fifo(7);
   dout_elink2fifo_inv(14) <= dout_elink2fifo(6);
   dout_elink2fifo_inv(13) <= dout_elink2fifo(5);
@@ -503,5 +544,6 @@ end process;
   
   sel_din(1)        <= pattern_ena;
   sel_din(0)        <= daq_ena;
+
     
 end RTL;

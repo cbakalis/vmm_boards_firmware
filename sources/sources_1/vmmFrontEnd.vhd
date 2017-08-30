@@ -268,6 +268,11 @@ entity vmmFrontEnd is
         
         -- E-link MMCM locked LED
         LED_LOCKED            : OUT   STD_LOGIC;
+        -- E-link overflow LED
+        LED_ERROR_0           : OUT   STD_LOGIC;  
+        LED_ERROR_1           : OUT   STD_LOGIC;
+        LED_ERROR_2           : OUT   STD_LOGIC;
+        LED_ERROR_3           : OUT   STD_LOGIC;
         
         -- AXI4SPI Flash Configuration
         ---------------------------------------
@@ -283,8 +288,8 @@ architecture Behavioral of vmmFrontEnd is
     -- Global Settings
     ------------------------------------------------------------------- 
     -- Default IP and MAC address of the board
-    signal default_IP       : std_logic_vector(31 downto 0) := x"c0a80002";
-    signal default_MAC      : std_logic_vector(47 downto 0) := x"002320189223";
+    signal default_IP       : std_logic_vector(31 downto 0) := x"c0a80003";
+    signal default_MAC      : std_logic_vector(47 downto 0) := x"002320145223";
     signal default_destIP   : std_logic_vector(31 downto 0) := x"c0a80010";
     -- Set to '1' for MMFE8 or '0' for 1-VMM boards
     constant is_mmfe8       : std_logic := '1';
@@ -585,20 +590,17 @@ architecture Behavioral of vmmFrontEnd is
     ------------------------------------------------------------------ 
     signal rst_elink_mmcm       : std_logic := '0';
     signal rst_elink_glbl       : std_logic := '0';
-    signal rst_elink_tx         : std_logic := '0';
     signal rst_elink_rx         : std_logic := '0';
-    signal swap_tx              : std_logic := '0';
     signal swap_rx              : std_logic := '0';
-  
-    signal pattern_enable       : std_logic := '0'; -- DEFAULT: disable pattern
-    signal daq_enable_vio       : std_logic := '1'; -- DEFAULT: enable daq
-    signal daq_enable_elink     : std_logic := '1'; -- DEFAULT: enable daq
-    signal loopback_enable      : std_logic := '0'; -- DEFAULT: disable loopback
     
     signal elink_DAQ_tx         : std_logic := '0';
     signal elink_DAQ_rx         : std_logic := '0';
     signal trigger_cnt          : std_logic_vector(15 downto 0) := (others => '0');
-    signal bitmask_null         : std_logic_vector(7 downto 0) := (others => '0');
+    signal bitmask_null         : std_logic_vector(7 downto 0)  := (others => '0');
+    signal enable_led           : std_logic := '0';
+    signal test_led             : std_logic := '0';
+    signal enable_led_final     : std_logic := '0';
+    signal led_out              : std_logic_vector(3 downto 0)  := (others => '0');
     
     -------------------------------------------------
     -- Flow FSM signals
@@ -825,6 +827,7 @@ architecture Behavioral of vmmFrontEnd is
     -- 23. vmm_oddr_wrapper
     -- 24. elink_wrapper
     -- 25. vio_elink
+    -- 26. led
     -------------------------------------------------------------------
     -- 1
     component clk_wiz_gen
@@ -1489,6 +1492,7 @@ architecture Behavioral of vmmFrontEnd is
         swap_tx         : in  std_logic;  -- swap the tx-side bits
         swap_rx         : in  std_logic;  -- swap the rx-side bits
         ttc_detected    : out std_logic;  -- TTC signal detected
+        error_led       : out std_logic;  -- rx data flow is too high  
         ---------------------------------
         -------- E-link clocking --------
         clk_40          : in  std_logic;
@@ -1500,6 +1504,11 @@ architecture Behavioral of vmmFrontEnd is
         ---- E-link Serial Interface ----
         elink_tx        : out std_logic;                    -- elink tx bus
         elink_rx        : in  std_logic;                    -- elink rx bus
+        ---------------------------------
+        -------- UDP Interface ----------
+        udp_tx_dout_rdy : in std_logic;
+        udp_tx_start    : out std_logic;
+        udp_txi         : out udp_tx_type;
         ---------------------------------
         ------ Readout Interface --------
         ro_rdy          : in  std_logic;                    -- every VMM has been read out
@@ -1524,14 +1533,15 @@ COMPONENT vio_elink
         probe_out0 : out std_logic_vector(0 downto 0);
         probe_out1 : out std_logic_vector(0 downto 0);
         probe_out2 : out std_logic_vector(0 downto 0);
-        probe_out3 : out std_logic_vector(0 downto 0);
-        probe_out4 : out std_logic_vector(0 downto 0);
-        probe_out5 : out std_logic_vector(0 downto 0);
-        probe_out6 : out std_logic_vector(0 downto 0);
-        probe_out7 : out std_logic_vector(0 downto 0);
-        probe_out8 : out std_logic_vector(0 downto 0)
+        probe_out3 : out std_logic_vector(0 downto 0)
       );
     END COMPONENT;
+
+COMPONENT led
+ PORT ( clk,enable : in std_logic;
+        led_out     : out  std_logic_vector (3 downto 0)
+         );
+END COMPONENT;
 
 begin
     
@@ -1848,362 +1858,368 @@ mmcm_master: clk_wiz_gen
         gen_locked  => master_locked
     );
 
-event_timing_reset_instance: event_timing_reset
-    port map(
-        hp_clk          => '0', --clk_800
-        clk             => userclk2,
-        clk_10_phase45  => '0', --clk_10_phase45
-        bc_clk          => '0', --clk_10
+led_blink_inst: led
+ PORT MAP( clk  => userclk2,
+           enable => enable_led_final,
+           led_out => led_out 
+         );
 
-        daqEnable       => daq_enable_i,
-        pfBusy          => pfBusy_i,
-        reset           => rst_vmm,
+--event_timing_reset_instance: event_timing_reset
+--    port map(
+--        hp_clk          => '0', --clk_800
+--        clk             => userclk2,
+--        clk_10_phase45  => '0', --clk_10_phase45
+--        bc_clk          => '0', --clk_10
 
-        glBCID          => glBCID_i,
-        prec_cnt        => open,
+--        daqEnable       => daq_enable_i,
+--        pfBusy          => pfBusy_i,
+--        reset           => rst_vmm,
 
-        state_rst_out   => state_rst_etr_i,
-        rst_o           => rst_etr_i,
-        rst_done_o      => rst_done_etr_i,
+--        glBCID          => glBCID_i,
+--        prec_cnt        => open,
 
-        vmm_ena_vec     => open,
-        vmm_wen_vec     => open,
-        reset_latched   => etr_reset_latched
-    );
+--        state_rst_out   => state_rst_etr_i,
+--        rst_o           => rst_etr_i,
+--        rst_done_o      => rst_done_etr_i,
 
-readout_vmm: vmm_readout_wrapper
-    generic map(is_mmfe8 => is_mmfe8, vmmReadoutMode => vmmReadoutMode)
-    port map(
-        ------------------------------------
-        --- Continuous Readout Interface ---
-        clkTkProc       => clk_40,
-        clkDtProc       => clk_50,
-        clk             => userclk2,
-        --
-        daq_enable      => daq_enable_i,
-        trigger_pulse   => pf_trigVmmRo,
-        cktk_max        => cktk_max_num,
-        --
-        dt_state_o      => dt_state,
-        dt_cntr_st_o    => dt_cntr_st,
-        ------------------------------------
-        ---- Level-0 Readout Interface -----
-        clk_ckdt        => clk_160,
-        rst_buff        => rst_l0_buff,
-        rst_intf_proc   => rst_l0_pf,
-        --
-        level_0         => level_0,
-        wr_accept       => accept_wr,
-        --
-        vmm_conf        => conf_wen_i,
-        daq_on_inhib    => daq_on_inhib, -- synced to flow_fsm's clock
-        --
-        null_event      => bitmask_null,
-        all_ready       => ro_rdy,
-        ------------------------------------
-        ---- Packet Formation Interface ----
-        vmmWordReady    => vmmWordReady_i,
-        vmmWord         => vmmWord_i,
-        rd_ena_buff     => rd_ena_buff,
-        vmmEventDone    => vmmEventDone_i,
-        vmmId           => pf_vmmIdRo,
-        linkHealth_bmsk => linkHealth_bmsk,
-        ------------------------------------
-        ---------- VMM3 Interface ----------
-        vmm_data0_vec   => data0_in_vec,
-        vmm_data1_vec   => data1_in_vec,
-        vmm_ckdt_glbl   => CKDT_glbl,
-        vmm_ckdt_enable => vmm_ckdt_enable,
-        vmm_cktk_vec    => cktk_out_vec
-    );
+--        vmm_ena_vec     => open,
+--        vmm_wen_vec     => open,
+--        reset_latched   => etr_reset_latched
+--    );
 
-trigger_instance: trigger
-    generic map(vmmReadoutMode => vmmReadoutMode)
-    port map(
-        clk             => userclk2,
-        ckbc            => CKBC_glbl,
-        clk_art         => clk_160,
-        rst_trig        => glbl_rst_i,
-        
-        ckbcMode        => ckbcMode,
-        request2ckbc    => request2ckbc,
-        cktp_enable     => cktp_enable,
-        CKTP_raw        => CKTP_raw,
-        pfBusy          => pfBusy_i,
-        cktp_pulse_width=> cktp_pulse_width(4 downto 0),
-        
-        tren            => tren,                -- Trigger module enabled
-        tr_hold         => tr_hold,             -- Prevents trigger while high
-        trmode          => trig_mode_int,       -- Mode 0: internal / Mode 1: external
-        trext           => CH_TRIGGER_i,        -- External trigger is to be driven to this port
-        level_0         => level_0,              -- Level-0 accept signal
-        accept_wr       => accept_wr,
+--readout_vmm: vmm_readout_wrapper
+--    generic map(is_mmfe8 => is_mmfe8, vmmReadoutMode => vmmReadoutMode)
+--    port map(
+--        ------------------------------------
+--        --- Continuous Readout Interface ---
+--        clkTkProc       => clk_40,
+--        clkDtProc       => clk_50,
+--        clk             => userclk2,
+--        --
+--        daq_enable      => daq_enable_i,
+--        trigger_pulse   => pf_trigVmmRo,
+--        cktk_max        => cktk_max_num,
+--        --
+--        dt_state_o      => dt_state,
+--        dt_cntr_st_o    => dt_cntr_st,
+--        ------------------------------------
+--        ---- Level-0 Readout Interface -----
+--        clk_ckdt        => clk_160,
+--        rst_buff        => rst_l0_buff,
+--        rst_intf_proc   => rst_l0_pf,
+--        --
+--        level_0         => level_0,
+--        wr_accept       => accept_wr,
+--        --
+--        vmm_conf        => conf_wen_i,
+--        daq_on_inhib    => daq_on_inhib, -- synced to flow_fsm's clock
+--        --
+--        null_event      => bitmask_null,
+--        all_ready       => ro_rdy,
+--        ------------------------------------
+--        ---- Packet Formation Interface ----
+--        vmmWordReady    => vmmWordReady_i,
+--        vmmWord         => vmmWord_i,
+--        rd_ena_buff     => rd_ena_buff,
+--        vmmEventDone    => vmmEventDone_i,
+--        vmmId           => pf_vmmIdRo,
+--        linkHealth_bmsk => linkHealth_bmsk,
+--        ------------------------------------
+--        ---------- VMM3 Interface ----------
+--        vmm_data0_vec   => data0_in_vec,
+--        vmm_data1_vec   => data1_in_vec,
+--        vmm_ckdt_glbl   => CKDT_glbl,
+--        vmm_ckdt_enable => vmm_ckdt_enable,
+--        vmm_cktk_vec    => cktk_out_vec
+--    );
 
-        reset           => tr_reset,
+--trigger_instance: trigger
+--    generic map(vmmReadoutMode => vmmReadoutMode)
+--    port map(
+--        clk             => userclk2,
+--        ckbc            => CKBC_glbl,
+--        clk_art         => clk_160,
+--        rst_trig        => glbl_rst_i,
+        
+--        ckbcMode        => ckbcMode,
+--        request2ckbc    => request2ckbc,
+--        cktp_enable     => cktp_enable,
+--        CKTP_raw        => CKTP_raw,
+--        pfBusy          => pfBusy_i,
+--        cktp_pulse_width=> cktp_pulse_width(4 downto 0),
+        
+--        tren            => tren,                -- Trigger module enabled
+--        tr_hold         => tr_hold,             -- Prevents trigger while high
+--        trmode          => trig_mode_int,       -- Mode 0: internal / Mode 1: external
+--        trext           => CH_TRIGGER_i,        -- External trigger is to be driven to this port
+--        level_0         => level_0,              -- Level-0 accept signal
+--        accept_wr       => accept_wr,
 
-        event_counter   => open,
-        tr_out          => tr_out_i,
-        trraw_synced125 => trraw_synced125_i,
-        latency         => latency_conf
-    );
+--        reset           => tr_reset,
 
-FIFO2UDP_instance: FIFO2UDP
-    Port map( 
-        clk_125                     => userclk2,
-        destinationIP               => destIP,
-        daq_data_in                 => daqFIFO_din_i,
-        fifo_data_out               => open,
-        udp_txi                     => udp_txi_int,    
-        udp_tx_start                => udp_tx_start_int,
-        control                     => control.ip_controls.arp_controls.clear_cache,
-        UDPDone                     => UDPDone,   
-        re_out                      => open,    
-        udp_tx_data_out_ready       => udp_tx_data_out_ready_int,
-        wr_en                       => daqFIFO_wr_en_i,
-        end_packet                  => end_packet_i,
-        global_reset                => glbl_rst_i,
-        packet_length_in            => packet_length_int,
-        reset_DAQ_FIFO              => daqFIFO_reset,
-        confReply_packet            => start_conf_proc_int,
+--        event_counter   => open,
+--        tr_out          => tr_out_i,
+--        trraw_synced125 => trraw_synced125_i,
+--        latency         => latency_conf
+--    );
 
-        vmmID                       => pf_vmmIdRo,
-        
-        trigger_out                 => trigger_i,
-        count_o                     => FIFO2UDP_state,
-        faifouki                    => faifouki
-    );       
+--FIFO2UDP_instance: FIFO2UDP
+--    Port map( 
+--        clk_125                     => userclk2,
+--        destinationIP               => destIP,
+--        daq_data_in                 => daqFIFO_din_i,
+--        fifo_data_out               => open,
+--        udp_txi                     => udp_txi_int,    
+--        udp_tx_start                => udp_tx_start_int,
+--        control                     => control.ip_controls.arp_controls.clear_cache,
+--        UDPDone                     => UDPDone,   
+--        re_out                      => open,    
+--        udp_tx_data_out_ready       => udp_tx_data_out_ready_int,
+--        wr_en                       => daqFIFO_wr_en_i,
+--        end_packet                  => end_packet_i,
+--        global_reset                => glbl_rst_i,
+--        packet_length_in            => packet_length_int,
+--        reset_DAQ_FIFO              => daqFIFO_reset,
+--        confReply_packet            => start_conf_proc_int,
 
-packet_formation_instance: packet_formation
-    generic map(is_mmfe8        => is_mmfe8,
-                vmmReadoutMode  => vmmReadoutMode,
-                artEnabled      => artEnabled)
-    port map(
-        clk             => userclk2,
+--        vmmID                       => pf_vmmIdRo,
         
-        newCycle        => pf_newCycle,
-        
-        trigVmmRo       => pf_trigVmmRo,
-        vmmId           => pf_vmmIdRo,
-        vmmWord         => vmmWord_i,
-        vmmWordReady    => vmmWordReady_i,
-        vmmEventDone    => vmmEventDone_i,
-        
-        UDPDone         => UDPDone,
-        pfBusy          => pfBusy_i,
-        glBCID          => glBCID_i,
-        
-        packLen         => pf_packLen,
-        dataout         => daq_data_out_i,
-        wrenable        => daq_wr_en_i,
-        end_packet      => end_packet_daq_int,
-        
-        rd_ena_buff     => rd_ena_buff,
-        rst_l0          => rst_l0_pf,
-        
-        tr_hold         => tr_hold,
-        reset           => pf_rst_final,
-        rst_vmm         => rst_vmm,
-        linkHealth_bmsk => linkHealth_bmsk,
-        rst_FIFO        => pf_rst_FIFO,
-        
-        elink_inhibit   => pfInhibit_i,
-        pf_rdy          => pfReady_i,
-        ro_rdy          => ro_rdy,
-        trigger_cnt     => trigger_cnt,
+--        trigger_out                 => trigger_i,
+--        count_o                     => FIFO2UDP_state,
+--        faifouki                    => faifouki
+--    );       
 
-        latency         => latency_conf,
-        dbg_st_o        => pf_dbg_st,
-        trraw_synced125 => trraw_synced125_i,
+--packet_formation_instance: packet_formation
+--    generic map(is_mmfe8        => is_mmfe8,
+--                vmmReadoutMode  => vmmReadoutMode,
+--                artEnabled      => artEnabled)
+--    port map(
+--        clk             => userclk2,
         
-        vmmArtData125   => vmmArtData,
-        vmmArtReady     => vmmArtReady
+--        newCycle        => pf_newCycle,
         
-    );   
+--        trigVmmRo       => pf_trigVmmRo,
+--        vmmId           => pf_vmmIdRo,
+--        vmmWord         => vmmWord_i,
+--        vmmWordReady    => vmmWordReady_i,
+--        vmmEventDone    => vmmEventDone_i,
         
-data_selection:  select_data
-    port map(
-        configuring                 => start_conf_proc_int,
-        xadc                        => xadc_busy,
-        data_acq                    => daq_enable_i,
-        we_data                     => daq_wr_en_i,
-        we_conf                     => we_conf_int,
-        we_xadc                     => xadc_fifo_enable,
-        daq_data_in                 => daq_data_out_i,
-        conf_data_in                => user_data_out_i,
-        xadc_data_in                => xadc_fifo_bus,
-        data_packet_length          => pf_packLen,
-        xadc_packet_length          => xadc_packet_len,
-        conf_packet_length          => packet_len_conf,
-        end_packet_conf             => end_packet_conf_int,
-        end_packet_daq              => end_packet_daq_int,
-        end_packet_xadc             => xadc_end_of_data,
-        fifo_rst_daq                => pf_rst_FIFO,
-        fifo_rst_xadc               => '0',
-        rstFIFO_top                 => rstFIFO_top,
+--        UDPDone         => UDPDone,
+--        pfBusy          => pfBusy_i,
+--        glBCID          => glBCID_i,
+        
+--        packLen         => pf_packLen,
+--        dataout         => daq_data_out_i,
+--        wrenable        => daq_wr_en_i,
+--        end_packet      => end_packet_daq_int,
+        
+--        rd_ena_buff     => rd_ena_buff,
+--        rst_l0          => rst_l0_pf,
+        
+--        tr_hold         => tr_hold,
+--        reset           => pf_rst_final,
+--        rst_vmm         => rst_vmm,
+--        linkHealth_bmsk => linkHealth_bmsk,
+--        rst_FIFO        => pf_rst_FIFO,
+        
+--        elink_inhibit   => pfInhibit_i,
+--        pf_rdy          => pfReady_i,
+--        ro_rdy          => ro_rdy,
+--        trigger_cnt     => trigger_cnt,
 
-        data_out                    => daqFIFO_din_i,
-        packet_length               => packet_length_int,
-        we                          => daqFIFO_wr_en_i,
-        end_packet                  => end_packet_i,
-        fifo_rst                    => daqFIFO_reset
-    );
-
-xadc_instance: xadcModule
-    port map(
-        clk125                      => userclk2,
-        rst                         => glbl_rst_i,
+--        latency         => latency_conf,
+--        dbg_st_o        => pf_dbg_st,
+--        trraw_synced125 => trraw_synced125_i,
         
-        VP_0                        => VP_0,
-        VN_0                        => VN_0,
-        Vaux0_v_n                   => Vaux0_v_n,
-        Vaux0_v_p                   => Vaux0_v_p,
-        Vaux1_v_n                   => Vaux1_v_n,
-        Vaux1_v_p                   => Vaux1_v_p,
-        Vaux2_v_n                   => Vaux2_v_n,
-        Vaux2_v_p                   => Vaux2_v_p,
-        Vaux3_v_n                   => Vaux3_v_n,
-        Vaux3_v_p                   => Vaux3_v_p,
-        Vaux8_v_n                   => Vaux8_v_n,
-        Vaux8_v_p                   => Vaux8_v_p,
-        Vaux9_v_n                   => Vaux9_v_n,
-        Vaux9_v_p                   => Vaux9_v_p,
-        Vaux10_v_n                  => Vaux10_v_n,
-        Vaux10_v_p                  => Vaux10_v_p,
-        Vaux11_v_n                  => Vaux11_v_n,
-        Vaux11_v_p                  => Vaux11_v_p,
-        data_in_rdy                 => xadc_start,
-        vmm_id                      => vmm_id_xadc,
-        sample_size                 => xadc_sample_size,
-        delay_in                    => xadc_delay,
-        UDPDone                     => UDPDone,
+--        vmmArtData125   => vmmArtData,
+--        vmmArtReady     => vmmArtReady
+        
+--    );   
+        
+--data_selection:  select_data
+--    port map(
+--        configuring                 => start_conf_proc_int,
+--        xadc                        => xadc_busy,
+--        data_acq                    => daq_enable_i,
+--        we_data                     => daq_wr_en_i,
+--        we_conf                     => we_conf_int,
+--        we_xadc                     => xadc_fifo_enable,
+--        daq_data_in                 => daq_data_out_i,
+--        conf_data_in                => user_data_out_i,
+--        xadc_data_in                => xadc_fifo_bus,
+--        data_packet_length          => pf_packLen,
+--        xadc_packet_length          => xadc_packet_len,
+--        conf_packet_length          => packet_len_conf,
+--        end_packet_conf             => end_packet_conf_int,
+--        end_packet_daq              => end_packet_daq_int,
+--        end_packet_xadc             => xadc_end_of_data,
+--        fifo_rst_daq                => pf_rst_FIFO,
+--        fifo_rst_xadc               => '0',
+--        rstFIFO_top                 => rstFIFO_top,
+
+--        data_out                    => daqFIFO_din_i,
+--        packet_length               => packet_length_int,
+--        we                          => daqFIFO_wr_en_i,
+--        end_packet                  => end_packet_i,
+--        fifo_rst                    => daqFIFO_reset
+--    );
+
+--xadc_instance: xadcModule
+--    port map(
+--        clk125                      => userclk2,
+--        rst                         => glbl_rst_i,
+        
+--        VP_0                        => VP_0,
+--        VN_0                        => VN_0,
+--        Vaux0_v_n                   => Vaux0_v_n,
+--        Vaux0_v_p                   => Vaux0_v_p,
+--        Vaux1_v_n                   => Vaux1_v_n,
+--        Vaux1_v_p                   => Vaux1_v_p,
+--        Vaux2_v_n                   => Vaux2_v_n,
+--        Vaux2_v_p                   => Vaux2_v_p,
+--        Vaux3_v_n                   => Vaux3_v_n,
+--        Vaux3_v_p                   => Vaux3_v_p,
+--        Vaux8_v_n                   => Vaux8_v_n,
+--        Vaux8_v_p                   => Vaux8_v_p,
+--        Vaux9_v_n                   => Vaux9_v_n,
+--        Vaux9_v_p                   => Vaux9_v_p,
+--        Vaux10_v_n                  => Vaux10_v_n,
+--        Vaux10_v_p                  => Vaux10_v_p,
+--        Vaux11_v_n                  => Vaux11_v_n,
+--        Vaux11_v_p                  => Vaux11_v_p,
+--        data_in_rdy                 => xadc_start,
+--        vmm_id                      => vmm_id_xadc,
+--        sample_size                 => xadc_sample_size,
+--        delay_in                    => xadc_delay,
+--        UDPDone                     => UDPDone,
     
-        MuxAddr0                    => MuxAddr0_i,
-        MuxAddr1                    => MuxAddr1_i,
-        MuxAddr2                    => MuxAddr2_i,
-        MuxAddr3_p                  => MuxAddr3_p_i,
-        MuxAddr3_n                  => MuxAddr3_n_i,
-        end_of_data                 => xadc_end_of_data,
-        fifo_bus                    => xadc_fifo_bus,
-        data_fifo_enable            => xadc_fifo_enable,
-        packet_len                  => xadc_packet_len,
-        xadc_busy                   => xadc_busy          -- synced to 125 Mhz
-    );
+--        MuxAddr0                    => MuxAddr0_i,
+--        MuxAddr1                    => MuxAddr1_i,
+--        MuxAddr2                    => MuxAddr2_i,
+--        MuxAddr3_p                  => MuxAddr3_p_i,
+--        MuxAddr3_n                  => MuxAddr3_n_i,
+--        end_of_data                 => xadc_end_of_data,
+--        fifo_bus                    => xadc_fifo_bus,
+--        data_fifo_enable            => xadc_fifo_enable,
+--        packet_len                  => xadc_packet_len,
+--        xadc_busy                   => xadc_busy          -- synced to 125 Mhz
+--    );
 
-axi4_spi_instance: AXI4_SPI  
-    port map(
-        clk_200                => clk_200,
-        clk_125                => userclk2,
-        clk_50                 => clk_50,
+--axi4_spi_instance: AXI4_SPI  
+--    port map(
+--        clk_200                => clk_200,
+--        clk_125                => userclk2,
+--        clk_50                 => clk_50,
         
-        myIP                   => myIP,             -- synced to 125 Mhz
-        myMAC                  => myMAC,            -- synced to 125 Mhz
-        destIP                 => destIP,           -- synced to 125 Mhz
+--        myIP                   => myIP,             -- synced to 125 Mhz
+--        myMAC                  => myMAC,            -- synced to 125 Mhz
+--        destIP                 => destIP,           -- synced to 125 Mhz
 
-        default_IP             => default_IP,
-        default_MAC            => default_MAC,
-        default_destIP         => default_destIP,
+--        default_IP             => default_IP,
+--        default_MAC            => default_MAC,
+--        default_destIP         => default_destIP,
         
-        myIP_set               => myIP_set,         -- synced internally to 50 Mhz
-        myMAC_set              => myMAC_set,        -- synced internally to 50 Mhz
-        destIP_set             => destIP_set,       -- synced internally to 50 Mhz
+--        myIP_set               => myIP_set,         -- synced internally to 50 Mhz
+--        myMAC_set              => myMAC_set,        -- synced internally to 50 Mhz
+--        destIP_set             => destIP_set,       -- synced internally to 50 Mhz
 
-        newip_start            => newIP_start,      -- synced internally to 50 Mhz
-        flash_busy             => flash_busy,       -- synced to 125 Mhz
+--        newip_start            => newIP_start,      -- synced internally to 50 Mhz
+--        flash_busy             => flash_busy,       -- synced to 125 Mhz
 
-        io0_i                  => io0_i,
-        io0_o                  => io0_o,
-        io0_t                  => io0_t,
-        io1_i                  => io1_i,
-        io1_o                  => io1_o,
-        io1_t                  => io1_t,
-        ss_i                   => ss_i,
-        ss_o                   => ss_o,
-        ss_t                   => ss_t
-        --SPI_CLK                => 
-    );
+--        io0_i                  => io0_i,
+--        io0_o                  => io0_o,
+--        io0_t                  => io0_t,
+--        io1_i                  => io1_i,
+--        io1_o                  => io1_o,
+--        io1_t                  => io1_t,
+--        ss_i                   => ss_i,
+--        ss_o                   => ss_o,
+--        ss_t                   => ss_t
+--        --SPI_CLK                => 
+--    );
 
-ckbc_cktp_generator: clk_gen_wrapper
-    port map(
-        ------------------------------------
-        ------- General Interface ----------
-        clk_500             => clk_500,
-        clk_160             => clk_160,
-        clk_125             => userclk2,
-        rst                 => glbl_rst_i,
-        mmcm_locked         => master_locked,
-        CKTP_raw            => CKTP_raw,
-        ------------------------------------
-        ----- Configuration Interface ------
-        cktp_enable         => cktp_enable,
-        cktp_primary        => vmm_cktp_primary, -- from flow_fsm
-        readout_mode        => ckbcMode,
-        enable_ro_ckbc      => request2ckbc,
-        cktp_pulse_width    => cktp_pulse_width(4 downto 0),
-        cktp_max_num        => cktp_max_num,
-        cktp_period         => cktp_period,
-        cktp_skew           => cktp_skew(4 downto 0),
-        ckbc_freq           => ckbc_freq(5 downto 0),
-        ckbc_max_num        => ckbc_max_num,
-        ------------------------------------
-        ---------- VMM Interface -----------
-        CKTP                => CKTP_glbl,
-        CKBC                => CKBC_glbl
-    );
+--ckbc_cktp_generator: clk_gen_wrapper
+--    port map(
+--        ------------------------------------
+--        ------- General Interface ----------
+--        clk_500             => clk_500,
+--        clk_160             => clk_160,
+--        clk_125             => userclk2,
+--        rst                 => glbl_rst_i,
+--        mmcm_locked         => master_locked,
+--        CKTP_raw            => CKTP_raw,
+--        ------------------------------------
+--        ----- Configuration Interface ------
+--        cktp_enable         => cktp_enable,
+--        cktp_primary        => vmm_cktp_primary, -- from flow_fsm
+--        readout_mode        => ckbcMode,
+--        enable_ro_ckbc      => request2ckbc,
+--        cktp_pulse_width    => cktp_pulse_width(4 downto 0),
+--        cktp_max_num        => cktp_max_num,
+--        cktp_period         => cktp_period,
+--        cktp_skew           => cktp_skew(4 downto 0),
+--        ckbc_freq           => ckbc_freq(5 downto 0),
+--        ckbc_max_num        => ckbc_max_num,
+--        ------------------------------------
+--        ---------- VMM Interface -----------
+--        CKTP                => CKTP_glbl,
+--        CKBC                => CKBC_glbl
+--    );
 
-QSPI_IO0_0: IOBUF    
-   port map (
-      O  => io0_i,
-      IO => IO0_IO,
-      I  => io0_o,
-      T  => io0_t
-   );
+--QSPI_IO0_0: IOBUF    
+--   port map (
+--      O  => io0_i,
+--      IO => IO0_IO,
+--      I  => io0_o,
+--      T  => io0_t
+--   );
            
-QSPI_IO1_0: IOBUF    
-   port map (
-      O  => io1_i,
-      IO => IO1_IO,
-      I  => io1_o,
-      T  => io1_t
-   );
+--QSPI_IO1_0: IOBUF    
+--   port map (
+--      O  => io1_i,
+--      IO => IO1_IO,
+--      I  => io1_o,
+--      T  => io1_t
+--   );
     
-QSPI_SS_0: IOBUF     
-   port map (
-      O  => ss_i(0),
-      IO => SS_IO,
-      I  => ss_o(0),
-      T  => ss_t
-   );
+--QSPI_SS_0: IOBUF     
+--   port map (
+--      O  => ss_i(0),
+--      IO => SS_IO,
+--      I  => ss_o(0),
+--      T  => ss_t
+--   );
    
-art_instance: artReadout
-    generic map(is_mmfe8 => is_mmfe8, 
-                artEnabled => artEnabled)
-    port map (
-        clk             => userclk2,
-        clk_art         => clk_160,
-        trigger         => trraw_synced125_i,
-        artData         => art_in_vec,
-        vmmArtData125   => vmmArtData,
-        vmmArtReady     => vmmArtReady
-   );
+--art_instance: artReadout
+--    generic map(is_mmfe8 => is_mmfe8, 
+--                artEnabled => artEnabled)
+--    port map (
+--        clk             => userclk2,
+--        clk_art         => clk_160,
+--        trigger         => trraw_synced125_i,
+--        artData         => art_in_vec,
+--        vmmArtData125   => vmmArtData,
+--        vmmArtReady     => vmmArtReady
+--   );
 
-vmm_oddr_inst: vmm_oddr_wrapper
-    port map(
-        -------------------------------------------------------
-        ckdt_bufg       => CKDT_glbl,
-        ckdt_enable_vec => vmm_ckdt_enable,
-        ckdt_toBuf_vec  => ckdt_out_vec,
-        -------------------------------------------------------
-        ckbc_bufg       => CKBC_glbl,
-        ckbc_enable     => ckbc_enable,
-        ckbc_toBuf_vec  => vmm_ckbc_vec,
-        -------------------------------------------------------
-        cktp_bufg       => CKTP_glbl,
-        cktp_toBuf_vec  => vmm_cktp_vec,
-        -------------------------------------------------------
-        ckart_bufg      => clk_160,
-        ckart_toBuf_vec => ckart_vec
-        -------------------------------------------------------
-    );
+--vmm_oddr_inst: vmm_oddr_wrapper
+--    port map(
+--        -------------------------------------------------------
+--        ckdt_bufg       => CKDT_glbl,
+--        ckdt_enable_vec => vmm_ckdt_enable,
+--        ckdt_toBuf_vec  => ckdt_out_vec,
+--        -------------------------------------------------------
+--        ckbc_bufg       => CKBC_glbl,
+--        ckbc_enable     => ckbc_enable,
+--        ckbc_toBuf_vec  => vmm_ckbc_vec,
+--        -------------------------------------------------------
+--        cktp_bufg       => CKTP_glbl,
+--        cktp_toBuf_vec  => vmm_cktp_vec,
+--        -------------------------------------------------------
+--        ckart_bufg      => clk_160,
+--        ckart_toBuf_vec => ckart_vec
+--        -------------------------------------------------------
+--    );
 
 -- DAQ path E-link
 DAQ_ELINK: elink_wrapper
@@ -2213,15 +2229,16 @@ DAQ_ELINK: elink_wrapper
         ---------------------------------
         ----- General/VIO Interface -----
         user_clock      => userclk2,
-        pattern_ena     => pattern_enable,  -- pattern data enabled by default, from VIO
-        daq_ena         => daq_enable_elink,-- from VIO
-        loopback_ena    => loopback_enable, -- from VIO
-        glbl_rst        => rst_elink_glbl,  -- from VIO
-        rst_tx          => rst_elink_tx,    -- from VIO and PF
+        pattern_ena     => '0',
+        daq_ena         => '0',
+        loopback_ena    => '0',
+        glbl_rst        => rst_elink_glbl,
+        rst_tx          => '0',
         rst_rx          => rst_elink_rx,    -- from VIO
-        swap_tx         => swap_tx,         -- from VIO
+        swap_tx         =>  '0',
         swap_rx         => swap_rx,         -- from VIO
         ttc_detected    => open,
+        error_led       => enable_led,
         ---------------------------------
         -------- E-link clocking --------
         clk_40          => clk_40,
@@ -2233,6 +2250,11 @@ DAQ_ELINK: elink_wrapper
         ---- E-link Serial Interface ----
         elink_tx        => elink_DAQ_tx,
         elink_rx        => elink_DAQ_rx,
+        ---------------------------------
+        -------- UDP Interface ----------
+        udp_tx_dout_rdy => udp_tx_data_out_ready_int,
+        udp_tx_start    => udp_tx_start_int,
+        udp_txi         => udp_txi_int,
         ---------------------------------
         ------ Readout Interface --------
         ro_rdy          => ro_rdy,
@@ -2253,15 +2275,10 @@ vio_elink_instance: vio_elink
     port map(
         clk             => userclk2,
         probe_in0(0)    => master_locked,
-        probe_out0(0)   => pattern_enable,
-        probe_out1(0)   => daq_enable_vio,
-        probe_out2(0)   => loopback_enable,
-        probe_out3(0)   => rst_elink_glbl,
-        probe_out4(0)   => rst_elink_mmcm,
-        probe_out5(0)   => rst_elink_tx,
-        probe_out6(0)   => rst_elink_rx,
-        probe_out7(0)   => swap_rx,
-        probe_out8(0)   => swap_tx
+        probe_out0(0)   => test_led,
+        probe_out1(0)   => rst_elink_glbl,
+        probe_out2(0)   => rst_elink_mmcm,
+        probe_out3(0)   => swap_rx
    );
 
 --    clk => clk,
@@ -2288,6 +2305,10 @@ elink_clk_tx_buf: OBUFDS generic map  (IOSTANDARD => "DEFAULT" , SLEW => "FAST")
 
 led_obuf:        OBUF   port map (O => LED_LOCKED, I => master_locked);
 
+error_led_0_obuf:   OBUF   port map  (O => LED_ERROR_0, I => led_out(0));
+error_led_1_obuf:   OBUF   port map  (O => LED_ERROR_1, I => led_out(1));
+error_led_2_obuf:   OBUF   port map  (O => LED_ERROR_2, I => led_out(2));
+error_led_3_obuf:   OBUF   port map  (O => LED_ERROR_3, I => led_out(3));
 ----------------------------------------------------CS------------------------------------------------------------
 cs_obuf_1:  OBUF  port map  (O => CS_1, I => vmm_cs_vec_obuf(1));
 cs_obuf_2:  OBUF  port map  (O => CS_2, I => vmm_cs_vec_obuf(2));
@@ -2445,6 +2466,8 @@ xadc_mux3_obufds: OBUFDS port map  (O => MuxAddr3_p, OB => MuxAddr3_n, I => MuxA
 art_out_diff_1:   OBUFDS port map (O =>  ART_OUT_P, OB => ART_OUT_N, I => art2);
 
 rstn_obuf:  OBUF  port map  (O => phy_rstn_out, I => phy_rstn);
+
+
  
 -------------------------------------------------------------------
 --                        Processes                              --
@@ -2738,7 +2761,7 @@ end process;
     pf_rst_final            <= pf_rst_flow or glbl_rst_i;
     glbl_fifo_init          <= not phy_rstn;
     rstFIFO_top             <= rstFIFO_flow or glbl_fifo_init;
-    daq_enable_elink        <= daq_enable_vio and daq_enable_i;
+    enable_led_final        <= enable_led or test_led;
     
     -- configuration assertion
     vmm_cs_vec_obuf(1)  <= vmm_cs_all;
