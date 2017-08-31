@@ -1,4 +1,4 @@
----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------
 -- Company: NTU ATHENS - BNL
 -- Engineer: Paris Moschovakos
 -- 
@@ -34,9 +34,8 @@
 -- 06.04.2017 Hard setting latency to 300ns as configurable latency was moved to trigger module (Paris)
 -- 25.04.2017 Added vmm_driver module. (Christos Bakalis)
 -- 06.06.2017 Added ART header a handling (Paris)
--- 24.08.2017 Added extra states and signals to interface with elink DAQ driver. (Christos Bakalis)
---
----------------------------------------------------------------------------------------------------------
+-- 
+----------------------------------------------------------------------------------
 
 library IEEE;
 library UNISIM;
@@ -77,11 +76,17 @@ entity packet_formation is
         rst_vmm         : out std_logic;
         linkHealth_bmsk : in std_logic_vector(8 downto 1);
         rst_FIFO        : out std_logic;
-        
-        elink_inhibit   : in  std_logic; -- elink inhibitor
-        pf_rdy          : out std_logic; -- pf is ready to send vmm data
-        ro_rdy          : in  std_logic; -- all readout modules ready
-        trigger_cnt     : out std_logic_vector(15 downto 0); 
+
+        elink_aux_dout  : out std_logic_vector(15 downto 0);
+        elink_aux_wr    : out std_logic;
+        elink_daq_wr    : out std_logic;
+        elink_tr_cnt    : out std_logic_vector(15 downto 0);
+        vmm_null_bmsk   : in  std_logic_vector(7 downto 0);
+        start_null      : out std_logic;
+        start_pack      : out std_logic;
+        elink_drv_ena   : in  std_logic;
+        ro_rdy          : in  std_logic;
+        elink_done      : in  std_logic;
         
         latency         : in std_logic_vector(15 downto 0);
         dbg_st_o        : out std_logic_vector(4 downto 0);
@@ -126,11 +131,14 @@ architecture Behavioral of packet_formation is
     signal end_packet_int       : std_logic                     := '0';
     signal artValid             : std_logic                     := '0';
     signal trraw_synced125_prev : std_logic                     := '0';
-    signal clearValid           : std_logic                     := '0';  
+    signal clearValid           : std_logic                     := '0';
+    signal elink_daq_wr_allow   : std_logic                     := '0';
+    signal elink_aux_wr_i       : std_logic                     := '0';
+    signal wrenable_i           : std_logic                     := '0';
 
-    type stateType is (waitingForNewCycle, increaseCounter, waitForReady, waitForLatency, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
-                       sendHeaderStep3, triggerVmmReadout, waitForData, regVmm, chkInhib, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, 
-                       isUDPDone, isTriggerOff, S2, eventDone);
+    type stateType is (waitingForNewCycle, increaseCounter, chkReady, waitForLatency, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
+                       sendHeaderStep3, triggerVmmReadout, waitForData, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, 
+                       isUDPDone, isTriggerOff, enableElink, S2, eventDone);
     signal state            : stateType;
 
 --------------------  Debugging ------------------------------
@@ -193,7 +201,7 @@ architecture Behavioral of packet_formation is
 
 begin
 
-packetCaptureProc: process(clk, newCycle, vmmEventDone, vmmWordReady, wait_Cnt, UDPDone)
+packetCaptureProc: process(clk)
 begin
 
     if rising_edge(clk) then
@@ -207,7 +215,10 @@ begin
             sel_wrenable            <= '0';
             rst_FIFO                <= '1';
             daqFIFO_wr_en_hdr       <= '0';
-            pf_rdy                  <= '0';
+            start_null              <= '0';
+            start_pack              <= '0';
+            elink_aux_wr_i          <= '0';
+            elink_daq_wr_allow      <= '0';
             packLen_cnt             <= x"000";
             wait_Cnt                <= 0;
             sel_cnt                 <= (others => '0');
@@ -225,30 +236,32 @@ begin
                 sel_wrenable            <= '0';
                 drv_enable              <= '0';
                 trigLatencyCnt          <= 0;
-                pf_rdy                  <= '0';
+                start_null              <= '0';
+                elink_daq_wr_allow      <= '0';
+                start_pack              <= '0';
+                elink_aux_wr_i          <= '0';
                 sel_cnt                 <= (others => '0');
                 rst_FIFO                <= '0';
                 if newCycle = '1' then
-                    state           <= increaseCounter;
+                    pfBusy_i        <= '1';
+                    state           <= chkReady;
+                end if;
+
+            when chkReady =>
+                if(ro_rdy = '1')then
+                    state <= increaseCounter;
+                else
+                    state <= chkReady;
                 end if;
                 
             when increaseCounter =>
                 debug_state     <= "00001";
-                pfBusy_i        <= '1';
                 eventCounter_i  <= eventCounter_i + 1;
-                state           <= waitForReady;
-                vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
-
-            when waitForReady =>
-                if(ro_rdy = '1')then
-                    state <= waitForLatency;
-                else
-                    state <= waitForReady;
-                end if;
+                state           <= waitForLatency;
                 
             when waitForLatency =>
                 debug_state <= "00010";
-                tr_hold     <= '1'; -- Prevent new triggers
+                tr_hold             <= '1'; -- Prevent new triggers
                 if(trigLatencyCnt > trigLatency and is_mmfe8 = '1')then 
                     state           <= S2;
                 elsif(trigLatencyCnt > trigLatency and is_mmfe8 = '0')then
@@ -259,11 +272,12 @@ begin
 
             when S2 =>          -- wait for the header elements to be formed
                 debug_state <= "00010";
---                --tr_hold         <= '1';     -- Prevent new triggers
-                packLen_cnt     <= x"000";      -- Reset length count
+--                --tr_hold         <= '1';                 -- Prevent new triggers
+                packLen_cnt     <= x"000";              -- Reset length count
                 sel_wrenable    <= '0';
-                state           <= captureEventID;
+                drv_enable      <= '0';
                 vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
+                state           <= captureEventID;
 
             when captureEventID =>      -- Form Header
                 debug_state         <= "00011";
@@ -310,10 +324,18 @@ begin
                     state   <= triggerVmmReadout;
                 end if;
 
-            when triggerVmmReadout =>   -- Creates an 136ns pulse to trigger the readout if not at level0 mode                                        
+            when triggerVmmReadout =>   -- Creates an 136ns pulse to trigger the readout if not at level0 mode
+                                        
                 debug_state                 <= "00111";
                 sel_cnt                     <= "110"; -- fix the counter to 4 to select the VMM data for the next steps
                 sel_wrenable                <= '1';   -- grant control to driver
+
+                if(vmm_null_bmsk(vmmId_cnt) = '1')then -- this vmm empty, do not write anything to the elink driver
+                    elink_daq_wr_allow <= '0';
+                else
+                    elink_daq_wr_allow <= '1';
+                end if;
+
                 if wait_Cnt < 30 and vmmReadoutMode = '0' then
                     wait_Cnt                <= wait_Cnt + 1;
                     triggerVmmReadout_i     <= '1';
@@ -325,15 +347,10 @@ begin
 
             when waitForData =>
                 debug_state <= "01000";
-                pf_rdy      <= '1';
-                if(elink_inhibit = '1')then
-                    state <= waitForData;
-                else
-                    if (vmmWordReady = '1') then
-                        state           <= sendVmmDataStep1;
-                    elsif (vmmEventDone = '1') then
-                        state           <= sendTrailer; 
-                    end if;
+                if (vmmWordReady = '1') then
+                    state           <= sendVmmDataStep1;
+                elsif (vmmEventDone = '1') then
+                    state           <= sendTrailer; 
                 end if;
 
             when sendVmmDataStep1 =>
@@ -361,14 +378,20 @@ begin
                 end if;
 
             when sendTrailer =>
-                debug_state   <= "01100";
-                pf_rdy        <= '0';
-                packLen_i     <= packLen_cnt + packLen_drv2pf_unsg; 
-                state         <= packetDone;
+                if(vmm_null_bmsk(vmmId_cnt) = '1')then -- this vmm empty, do not write anything to the elink aux FIFO
+                    elink_aux_wr_i <= '0';
+                else
+                    elink_aux_wr_i <= '1';
+                end if;
+                debug_state         <= "01100";
+                elink_daq_wr_allow  <= '0'; -- stop writing
+                packLen_i           <= packLen_cnt + packLen_drv2pf_unsg; 
+                state               <= packetDone;
 
             when packetDone =>
                 debug_state     <= "01101";
                 end_packet_int  <= '1';
+                elink_aux_wr_i  <= '0';
                 if(is_mmfe8 = '1')then
                     state       <= eventDone;
                 else
@@ -378,7 +401,6 @@ begin
             when eventDone =>
                 debug_state     <= "01110";
                 end_packet_int  <= '0';
-                drv_enable      <= '0';
                 if vmmId_cnt = 7 then
                     vmmId_cnt   <= 0;
                     state       <= isUDPDone;
@@ -386,24 +408,7 @@ begin
                     vmmId_cnt    <= vmmId_cnt + 1;
                     sel_cnt      <= "000";
                     sel_wrenable <= '0';
-                    state        <= chkInhib; -- was S2
-                end if;
-
-            when chkInhib =>
-                debug_state     <= "01111";
-                if(elink_inhibit = '1')then
-                    state <= chkInhib;
-                else
-                    state <= regVmm;
-                end if;
-            
-            when regVmm =>
-                debug_state     <= "10000";
-                vmmId_i         <= std_logic_vector(to_unsigned(vmmId_cnt, 3));
-                if(elink_inhibit = '1')then
-                    state <= regVmm;
-                else
-                    state <= S2;
+                    state        <= S2;
                 end if;
                 
 --            when resetVMMs =>
@@ -425,15 +430,36 @@ begin
                 end_packet_int  <= '0';
                 rst_l0          <= '1'; -- reset the level0 buffers and the interface with packet_formation
                -- pfBusy_i        <= '0';
-                if (UDPDone = '1') then -- Wait for the UDP packet to be sent
-                    state       <= isTriggerOff;
+                if (UDPDone = '1' and elink_drv_ena = '1') then -- Wait for the UDP packet to be sent
+                    state   <= enableElink;
+                elsif(UDPDone = '1')then
+                    state   <= isTriggerOff;
+                else
+                    state   <= isUDPDone;
+                end if;
+
+            when enableElink =>
+                if(vmm_null_bmsk = x"ff")then
+                    start_pack  <= '0';
+                    start_null  <= '1';
+                else
+                    start_null  <= '0';
+                    start_pack  <= '1';
+                end if;
+
+                if(elink_done = '1')then -- wait here for the elink modules to finish sending
+                    state <= isTriggerOff;
+                else
+                    state <= enableElink;
                 end if;
                 
             when isTriggerOff =>            -- Wait for whatever ongoing trigger pulse to go to 0
                 debug_state <= "01111";
+                start_pack  <= '0';
+                start_null  <= '0';
                 if trraw_synced125 /= '1' then
-                    tr_hold                 <= '0'; -- Allow new triggers
-                    state           <= waitingForNewCycle;
+                    tr_hold <= '0'; -- Allow new triggers
+                    state   <= waitingForNewCycle;
                 end if;
 
             when others =>
@@ -463,9 +489,9 @@ end process;
 muxWrEn: process( sel_wrenable, daqFIFO_wr_en_hdr, daqFIFO_wr_en_drv )
 begin
     case sel_wrenable is
-    when '0'    => wrenable <= daqFIFO_wr_en_hdr;
-    when '1'    => wrenable <= daqFIFO_wr_en_drv;
-    when others => wrenable <= '0';
+    when '0'    => wrenable_i <= daqFIFO_wr_en_hdr;
+    when '1'    => wrenable_i <= daqFIFO_wr_en_drv;
+    when others => wrenable_i <= '0';
     end case;
 end process;
 
@@ -496,6 +522,18 @@ triggerEdgeDetection: process(clk) --125
             end if;
         end if;
     end process;
+
+-- synchronize the write enables and the data
+syncWrEnData: process(clk)
+begin
+    if(rising_edge(clk))then
+        elink_aux_dout  <= vmmId_i & '0' & packLen_drv2pf;
+        elink_daq_wr    <= daqFIFO_wr_en_drv and elink_daq_wr_allow and elink_drv_ena;
+        elink_aux_wr    <= elink_aux_wr_i and elink_drv_ena;
+        dataout         <= daqFIFO_din;
+        wrenable        <= wrenable_i;
+    end if;
+end process;
     
    LDCE_inst : LDCE
    generic map (
@@ -506,11 +544,11 @@ triggerEdgeDetection: process(clk) --125
       D => '1',
       G => vmmArtReady,
       GE => artEnabled
-   );			
-					
+   );           
+                    
     globBcid_i      <= globBcid;
     vmmWord_i       <= vmmWord;
-    dataout         <= daqFIFO_din;
+    --dataout         <= daqFIFO_din;
     packLen         <= std_logic_vector(packLen_i);
     end_packet      <= end_packet_int;
     trigVmmRo       <= triggerVmmReadout_i;
@@ -518,7 +556,6 @@ triggerEdgeDetection: process(clk) --125
     trigLatency     <= 37 + to_integer(unsigned(latency)); --(hard set to 300ns )--to_integer(unsigned(latency));
     pfBusy          <= pfBusy_i;
     globBCID_etr    <= glBCID;
-    trigger_cnt     <= std_logic_vector(eventCounter_i(15 downto 0));
     
     artHeader       <= b"0000000000" & vmmArtData125;
     
@@ -532,6 +569,11 @@ triggerEdgeDetection: process(clk) --125
                             --    8    &    16    &     5    &   3
     dbg_st_o                <= debug_state;
     packLen_drv2pf_unsg     <= unsigned(packLen_drv2pf);
+
+    --elink_daq_wr            <= daqFIFO_wr_en_drv and elink_daq_wr_allow and elink_drv_ena;
+    --elink_aux_wr            <= elink_aux_wr_i and elink_drv_ena;
+    --elink_aux_dout          <= vmmId_i & '0' & packLen_drv2pf;
+    elink_tr_cnt            <= std_logic_vector(eventCounter_i(15 downto 0));
 
 --ilaPacketFormation: ila_pf
 --port map(

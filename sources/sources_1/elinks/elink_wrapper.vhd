@@ -53,6 +53,8 @@ port(
     swap_tx         : in  std_logic;  -- swap the tx-side bits
     swap_rx         : in  std_logic;  -- swap the rx-side bits
     ttc_detected    : out std_logic;  -- TTC signal detected
+    timeout_ena     : in  std_logic;  -- wait before asserting elink done
+    timeout_limit   : in  std_logic_vector(15 downto 0); -- how much to wait?
     ---------------------------------
     -------- E-link clocking --------
     clk_40          : in  std_logic;
@@ -65,19 +67,16 @@ port(
     elink_tx        : out std_logic;                    -- elink tx bus
     elink_rx        : in  std_logic;                    -- elink rx bus
     ---------------------------------
-    ------ Readout Interface --------
-    ro_rdy          : in  std_logic;                    -- every VMM has been read out
-    bitmask_null    : in  std_logic_vector(7 downto 0); -- which VMMs have data?
-    health_bitmask  : in  std_logic_vector(7 downto 0); -- which VMMs have a healthy link?
-    ---------------------------------
     --------- PF Interface ----------
     din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
-    inhibit_pf      : out std_logic;                     -- pf inhibitor
-    trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)
-    vmm_id          : in  std_logic_vector(2 downto 0);  -- vmm that is being read
-    pf_busy         : in  std_logic;                     -- pf is in the middle of readout
-    pf_rdy          : in  std_logic;                     -- pf is ready to write DAQ data
-    wr_en_daq       : in  std_logic                      -- write enable from packet formation
+    wr_en_daq       : in  std_logic;                     -- write enable from packet formation
+    din_aux         : in  std_logic_vector(15 downto 0); -- auxiliary data (VMM & packet length)
+    wr_en_aux       : in  std_logic;                     -- auxiliary data (VMM & packet length) 
+    trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)  
+    bitmask_null    : in  std_logic_vector(7 downto 0);  -- which VMMs have data?
+    start_null      : in  std_logic;                     -- start the null header FSM
+    start_pack      : in  std_logic;                     -- start the hit data FSM
+    elink_done      : out std_logic                      -- elink is finished
     );
 end elink_wrapper;
 

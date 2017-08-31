@@ -511,8 +511,6 @@ architecture Behavioral of vmmFrontEnd is
     signal pf_dbg_st    : std_logic_vector(4 downto 0) := b"00000";
     signal rd_ena_buff  : std_logic := '0';
     signal pf_rst_final : std_logic := '0';
-    signal pfInhibit_i  : std_logic := '0';
-    signal pfReady_i    : std_logic := '0';
     
     -------------------------------------------------
     -- FIFO2UDP Signals
@@ -599,7 +597,17 @@ architecture Behavioral of vmmFrontEnd is
     signal elink_DAQ_rx         : std_logic := '0';
     signal trigger_cnt          : std_logic_vector(15 downto 0) := (others => '0');
     signal bitmask_null         : std_logic_vector(7 downto 0) := (others => '0');
-    
+
+    signal timeout_ena          : std_logic := '0';
+    signal timeout_limit        : std_logic_vector(15 downto 0) := (others => '0');
+
+    signal elink_daq_wren       : std_logic := '0';
+    signal elink_aux_wren       : std_logic := '0';
+    signal elink_aux_data       : std_logic_vector(15 downto 0) := (others => '0');
+    signal start_null           : std_logic := '0';
+    signal start_pack           : std_logic := '0';
+    signal elink_done           : std_logic := '0';
+
     -------------------------------------------------
     -- Flow FSM signals
     -------------------------------------------------
@@ -1009,10 +1017,16 @@ architecture Behavioral of vmmFrontEnd is
             linkHealth_bmsk : in std_logic_vector(8 downto 1);
             rst_FIFO        : out std_logic;
             
-            elink_inhibit   : in  std_logic; -- elink inhibitor
-            pf_rdy          : out std_logic; -- pf is ready to send vmm data
-            ro_rdy          : in  std_logic; -- all readout modules ready
-            trigger_cnt     : out std_logic_vector(15 downto 0);
+            elink_aux_dout  : out std_logic_vector(15 downto 0);
+            elink_aux_wr    : out std_logic;
+            elink_daq_wr    : out std_logic;
+            elink_tr_cnt    : out std_logic_vector(15 downto 0);
+            vmm_null_bmsk   : in  std_logic_vector(7 downto 0);
+            start_null      : out std_logic;
+            start_pack      : out std_logic;
+            elink_drv_ena   : in  std_logic;
+            ro_rdy          : in  std_logic;
+            elink_done      : in  std_logic;
             
             latency         : in std_logic_vector(15 downto 0);
             dbg_st_o        : out std_logic_vector(4 downto 0);
@@ -1489,6 +1503,8 @@ architecture Behavioral of vmmFrontEnd is
         swap_tx         : in  std_logic;  -- swap the tx-side bits
         swap_rx         : in  std_logic;  -- swap the rx-side bits
         ttc_detected    : out std_logic;  -- TTC signal detected
+        timeout_ena     : in  std_logic;  -- wait before asserting elink done
+        timeout_limit   : in  std_logic_vector(15 downto 0); -- how much to wait?
         ---------------------------------
         -------- E-link clocking --------
         clk_40          : in  std_logic;
@@ -1501,19 +1517,16 @@ architecture Behavioral of vmmFrontEnd is
         elink_tx        : out std_logic;                    -- elink tx bus
         elink_rx        : in  std_logic;                    -- elink rx bus
         ---------------------------------
-        ------ Readout Interface --------
-        ro_rdy          : in  std_logic;                    -- every VMM has been read out
-        bitmask_null    : in  std_logic_vector(7 downto 0); -- which VMMs have data?
-        health_bitmask  : in  std_logic_vector(7 downto 0); -- which VMMs have a healthy link?
-        ---------------------------------
         --------- PF Interface ----------
         din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
-        inhibit_pf      : out std_logic;                     -- pf inhibitor
-        trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)
-        vmm_id          : in  std_logic_vector(2 downto 0);  -- vmm that is being read
-        pf_busy         : in  std_logic;                     -- pf is in the middle of readout
-        pf_rdy          : in  std_logic;                     -- pf is ready to write DAQ data
-        wr_en_daq       : in  std_logic                      -- write enable from packet formation  
+        wr_en_daq       : in  std_logic;                     -- write enable from packet formation
+        din_aux         : in  std_logic_vector(15 downto 0); -- auxiliary data (VMM & packet length)
+        wr_en_aux       : in  std_logic;                     -- auxiliary data (VMM & packet length) 
+        trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)  
+        bitmask_null    : in  std_logic_vector(7 downto 0);  -- which VMMs have data?
+        start_null      : in  std_logic;                     -- start the null header FSM
+        start_pack      : in  std_logic;                     -- start the hit data FSM
+        elink_done      : out std_logic                      -- elink is finished 
         );
     end component;
     --25
@@ -1529,7 +1542,9 @@ COMPONENT vio_elink
         probe_out5 : out std_logic_vector(0 downto 0);
         probe_out6 : out std_logic_vector(0 downto 0);
         probe_out7 : out std_logic_vector(0 downto 0);
-        probe_out8 : out std_logic_vector(0 downto 0)
+        probe_out8 : out std_logic_vector(0 downto 0);
+        probe_out9 : out std_logic_vector(0 downto 0);
+        probe_out10 : out std_logic_vector(15 downto 0)
       );
     END COMPONENT;
 
@@ -2006,10 +2021,16 @@ packet_formation_instance: packet_formation
         linkHealth_bmsk => linkHealth_bmsk,
         rst_FIFO        => pf_rst_FIFO,
         
-        elink_inhibit   => pfInhibit_i,
-        pf_rdy          => pfReady_i,
+        elink_aux_dout  => elink_aux_data,
+        elink_aux_wr    => elink_aux_wren,
+        elink_daq_wr    => elink_daq_wren,
+        elink_tr_cnt    => trigger_cnt,
+        vmm_null_bmsk   => bitmask_null,
+        start_null      => start_null,
+        start_pack      => start_pack,
+        elink_drv_ena   => daq_enable_elink,
         ro_rdy          => ro_rdy,
-        trigger_cnt     => trigger_cnt,
+        elink_done      => elink_done,   
 
         latency         => latency_conf,
         dbg_st_o        => pf_dbg_st,
@@ -2222,6 +2243,8 @@ DAQ_ELINK: elink_wrapper
         swap_tx         => swap_tx,         -- from VIO
         swap_rx         => swap_rx,         -- from VIO
         ttc_detected    => open,
+        timeout_ena     => timeout_ena,
+        timeout_limit   => timeout_limit,
         ---------------------------------
         -------- E-link clocking --------
         clk_40          => clk_40,
@@ -2234,21 +2257,18 @@ DAQ_ELINK: elink_wrapper
         elink_tx        => elink_DAQ_tx,
         elink_rx        => elink_DAQ_rx,
         ---------------------------------
-        ------ Readout Interface --------
-        ro_rdy          => ro_rdy,
-        bitmask_null    => bitmask_null,
-        health_bitmask  => linkHealth_bmsk_i,
-        ---------------------------------
         --------- PF Interface ----------
         din_daq         => daq_data_out_i,
-        wr_en_daq       => daq_wr_en_i,
-        trigger_cnt     => trigger_cnt,
-        inhibit_pf      => pfInhibit_i,
-        pf_busy         => pfBusy_i,
-        pf_rdy          => pfReady_i,
-        vmm_id          => pf_vmmIdRo
+        wr_en_daq       => elink_daq_wren,
+        din_aux         => elink_aux_data,
+        wr_en_aux       => elink_aux_wren,
+        trigger_cnt     => trigger_cnt, 
+        bitmask_null    => bitmask_null,
+        start_null      => start_null,
+        start_pack      => start_pack,
+        elink_done      => elink_done
     ); 
-    
+
 vio_elink_instance: vio_elink
     port map(
         clk             => userclk2,
@@ -2261,7 +2281,9 @@ vio_elink_instance: vio_elink
         probe_out5(0)   => rst_elink_tx,
         probe_out6(0)   => rst_elink_rx,
         probe_out7(0)   => swap_rx,
-        probe_out8(0)   => swap_tx
+        probe_out8(0)   => swap_tx,
+        probe_out9(0)   => timeout_ena,
+        probe_out10     => timeout_limit
    );
 
 --    clk => clk,

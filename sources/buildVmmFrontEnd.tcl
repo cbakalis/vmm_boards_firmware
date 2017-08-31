@@ -252,6 +252,8 @@ set files [list \
  "[file normalize "$origin_dir/sources_1/ip/vmm_conf_buffer.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/fpga_reg_buffer.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/DAQelinkFIFO.xcix"]"\
+ "[file normalize "$origin_dir/sources_1/ip/AuxElinkFIFO.xcix"]"\
+ "[file normalize "$origin_dir/sources_1/ip/adapterFIFO.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/EPATH_FIFO.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/fh_epath_fifo2K_18bit_wide.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/hdlc_bist_fifo.xcix"]"\
