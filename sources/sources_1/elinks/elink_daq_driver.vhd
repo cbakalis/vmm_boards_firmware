@@ -164,12 +164,13 @@ end component;
     signal din_adapter      : std_logic_vector(17 downto 0) := (others => '0');
     signal rd_en_adapter    : std_logic := '0';
     signal wr_en_adapter    : std_logic := '0';
-    signal wr_en_elink_i    : std_logic := '0';
-    signal dout_elink_i     : std_logic_vector(17 downto 0) := (others => '0');
     signal adapter_full     : std_logic := '0';
     signal adapter_empty    : std_logic := '0';
     signal cnt_timeout      : unsigned(15 downto 0) := (others => '0');
     signal adapt_done       : std_logic := '0';
+    signal wait_cnt_adapt   : unsigned(1 downto 0) := (others => '0');
+    signal wr_en_elink_i    : std_logic := '0';
+    signal dout_elink_i     : std_logic_vector(17 downto 0) := (others => '0');
     
     signal empty_elink_i    : std_logic := '0';
     signal empty_elink_s    : std_logic := '0';
@@ -192,7 +193,7 @@ end component;
                               
     type stateType_null is  (ST_IDLE, ST_SEND_EOP, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_WR_EOP_0, ST_WR_EOP_1, ST_DONE, ST_WAIT);
 
-    type stateType_adapt is (ST_IDLE, ST_READ, ST_WAIT, ST_CNT, ST_DONE);
+    type stateType_adapt is (ST_IDLE, ST_TIMEOUT, ST_READ, ST_WRITE, ST_WAIT, ST_CNT, ST_DONE);
 
     signal state_pack       : stateType_pack := ST_IDLE;
     signal state_null       : stateType_null := ST_IDLE;
@@ -626,7 +627,9 @@ begin
         if(ena_adapt_pack = '0' and ena_adapt_null = '0')then
             adapt_done      <= '0';
             rd_en_adapter   <= '0';
+            wr_en_elink_i   <= '0';
             cnt_timeout     <= (others => '0');
+            wait_cnt_adapt  <= (others => '0');
             state_adapt     <= ST_READ;
         else
             case state_adapt is
@@ -635,20 +638,40 @@ begin
             when ST_READ =>
                 if(adapter_empty = '0')then
                     rd_en_adapter   <= '1';
-                    state_adapt     <= ST_READ;
+                    state_adapt     <= ST_WAIT;
                 else
                     rd_en_adapter   <= '0';
-                    state_adapt     <= ST_WAIT;
+                    state_adapt     <= ST_TIMEOUT;
+                end if;
+
+            when ST_WAIT =>
+                rd_en_adapter   <= '0';
+                wait_cnt_adapt  <= wait_cnt_adapt + 1;
+                if(wait_cnt_adapt = "10")then
+                    state_adapt <= ST_WRITE;
+                else
+                    state_adapt <= ST_WAIT;
+                end if;
+
+            -- assert wr_en and wait for one cycle before reading again
+            when ST_WRITE =>
+                wait_cnt_adapt  <= (others => '0');
+                if(wr_en_elink_i = '1')then
+                    wr_en_elink_i   <= '0';
+                    state_adapt     <= ST_READ;
+                else
+                    wr_en_elink_i   <= '1';
+                    state_adapt     <= ST_WRITE;
                 end if;
 
             -- wait for elink to send it all
-            when ST_WAIT =>
+            when ST_TIMEOUT =>
                 if(empty_elink_s = '1' and use_timeout = '1')then
                     state_adapt <= ST_CNT;
                 elsif(empty_elink_s = '1' and use_timeout = '0')then
                     state_adapt <= ST_DONE;
                 else
-                    state_adapt <= ST_WAIT;
+                    state_adapt <= ST_TIMEOUT;
                 end if;
 
             -- counter for timeout
@@ -668,6 +691,8 @@ begin
             when others => 
                 adapt_done      <= '0';
                 rd_en_adapter   <= '0';
+                wr_en_elink_i   <= '0';
+                cnt_timeout     <= (others => '0');
                 cnt_timeout     <= (others => '0');
                 state_adapt     <= ST_READ;
 
@@ -728,20 +753,14 @@ begin
         vmm_id          <= dout_aux_fifo(15 downto 13);
         cnt_limit       <= dout_aux_fifo(11 downto 0);
 
-        if(dout_elink_i(17 downto 16) = "01")then -- elink EOP reached
-            wr_en_elink_i   <= '0';
-            wr_en_elink     <= '0';
-        else
-            wr_en_elink_i   <= rd_en_adapter;
-            wr_en_elink     <= wr_en_elink_i;
-        end if;
-        
+        dout_elink      <= dout_elink_i;
+        wr_en_elink     <= wr_en_elink_i;
+
     end if;
 end process;
 
     hitsLen     <= std_logic_vector(len_cnt);
     elink_done  <= pack_done or null_done;
-    dout_elink  <= dout_elink_i;
 
 driverFIFO : DAQelinkFIFO
   PORT MAP (

@@ -500,17 +500,19 @@ architecture Behavioral of vmmFrontEnd is
     -------------------------------------------------
     -- Packet Formation Signals
     -------------------------------------------------
-    signal pf_newCycle  : std_logic;
-    signal pf_packLen   : std_logic_vector(11 downto 0);
-    signal pf_trigVmmRo : std_logic := '0';
-    signal pf_vmmIdRo   : std_logic_vector(2 downto 0) := b"000";
-    signal pf_rst_flow  : std_logic := '0';
-    signal rst_vmm      : std_logic := '0';
-    signal pf_rst_FIFO  : std_logic := '0';
-    signal pfBusy_i     : std_logic := '0';
-    signal pf_dbg_st    : std_logic_vector(4 downto 0) := b"00000";
-    signal rd_ena_buff  : std_logic := '0';
-    signal pf_rst_final : std_logic := '0';
+    signal pf_newCycle          : std_logic;
+    signal pf_packLen           : std_logic_vector(11 downto 0);
+    signal pf_trigVmmRo         : std_logic := '0';
+    signal pf_vmmIdRo           : std_logic_vector(2 downto 0) := b"000";
+    signal pf_rst_flow          : std_logic := '0';
+    signal rst_vmm              : std_logic := '0';
+    signal pf_rst_FIFO          : std_logic := '0';
+    signal pfBusy_i             : std_logic := '0';
+    signal pf_dbg_st            : std_logic_vector(4 downto 0) := b"00000";
+    signal rd_ena_buff          : std_logic := '0';
+    signal pf_rst_final         : std_logic := '0';
+    signal bitmask_null         : std_logic_vector(7 downto 0) := (others => '0');
+    signal bitmask_null_pf      : std_logic_vector(7 downto 0) := (others => '0');
     
     -------------------------------------------------
     -- FIFO2UDP Signals
@@ -596,7 +598,6 @@ architecture Behavioral of vmmFrontEnd is
     signal elink_DAQ_tx         : std_logic := '0';
     signal elink_DAQ_rx         : std_logic := '0';
     signal trigger_cnt          : std_logic_vector(15 downto 0) := (others => '0');
-    signal bitmask_null         : std_logic_vector(7 downto 0) := (others => '0');
 
     signal timeout_ena          : std_logic := '0';
     signal timeout_limit        : std_logic_vector(15 downto 0) := (others => '0');
@@ -789,7 +790,6 @@ architecture Behavioral of vmmFrontEnd is
 --    attribute mark_debug of FIFO2UDP_state            : signal is "TRUE";
 --    attribute mark_debug of UDPDone                   : signal is "TRUE";
 --    attribute mark_debug of tr_out_i                  : signal is "TRUE";
---    attribute mark_debug of rd_ena_buff               : signal is "TRUE";
 --    attribute mark_debug of level_0                   : signal is "TRUE";
 --    attribute mark_debug of rst_l0_pf                 : signal is "TRUE";
 --    attribute mark_debug of vmmWordReady_i            : signal is "TRUE";
@@ -797,10 +797,13 @@ architecture Behavioral of vmmFrontEnd is
 --    attribute mark_debug of dt_state                  : signal is "TRUE";
 --    attribute mark_debug of daq_data_out_i            : signal is "TRUE";
 --    attribute mark_debug of daq_enable_i              : signal is "TRUE";
---    attribute mark_debug of pf_trigVmmRo              : signal is "TRUE";
---    attribute mark_debug of dt_cntr_st                : signal is "TRUE";
---    attribute mark_debug of linkHealth_bmsk           : signal is "TRUE";
-    
+--    attribute mark_debug of start_null                : signal is "TRUE";
+--    attribute mark_debug of elink_done                : signal is "TRUE";
+--    attribute mark_debug of elink_aux_wren            : signal is "TRUE";
+--    attribute mark_debug of start_pack                : signal is "TRUE";
+--    attribute mark_debug of elink_daq_wren            : signal is "TRUE";
+--    attribute mark_debug of bitmask_null              : signal is "TRUE";
+
     -------------------------------------------------------------------
     -- Other
     -------------------------------------------------------------------   
@@ -1027,6 +1030,7 @@ architecture Behavioral of vmmFrontEnd is
             elink_drv_ena   : in  std_logic;
             ro_rdy          : in  std_logic;
             elink_done      : in  std_logic;
+            pf_null_bmsk    : out std_logic_vector(7 downto 0);
             
             latency         : in std_logic_vector(15 downto 0);
             dbg_st_o        : out std_logic_vector(4 downto 0);
@@ -2030,7 +2034,8 @@ packet_formation_instance: packet_formation
         start_pack      => start_pack,
         elink_drv_ena   => daq_enable_elink,
         ro_rdy          => ro_rdy,
-        elink_done      => elink_done,   
+        elink_done      => elink_done,
+        pf_null_bmsk    => bitmask_null_pf,   
 
         latency         => latency_conf,
         dbg_st_o        => pf_dbg_st,
@@ -2263,7 +2268,7 @@ DAQ_ELINK: elink_wrapper
         din_aux         => elink_aux_data,
         wr_en_aux       => elink_aux_wren,
         trigger_cnt     => trigger_cnt, 
-        bitmask_null    => bitmask_null,
+        bitmask_null    => bitmask_null_pf,
         start_null      => start_null,
         start_pack      => start_pack,
         elink_done      => elink_done
@@ -2837,22 +2842,29 @@ end process;
 --    overviewProbe(9)                   <= vmmWordReady_i;
 --    overviewProbe(10)                  <= vmmEventDone_i;
 --    overviewProbe(11)                  <= daq_enable_i;
---    overviewProbe(12)                  <= pf_trigVmmRo;
---    overviewProbe(14 downto 13)        <= (others => '0');
---    overviewProbe(15)                  <= rd_ena_buff;
+--    overviewProbe(12)                  <= start_null;
+--    overviewProbe(13)                  <= elink_done;
+--    overviewProbe(14)                  <= elink_aux_wren;
+--    overviewProbe(15)                  <= start_pack;
 --    overviewProbe(19 downto 16)        <= dt_state;
 --    overviewProbe(23 downto 20)        <= FIFO2UDP_state;
---    overviewProbe(24)                  <= CKTP_glbl;
+--    overviewProbe(24)                  <= '0';
 --    overviewProbe(25)                  <= UDPDone;
---    overviewProbe(26)                  <= CKBC_glbl;
+--    overviewProbe(26)                  <= '0';
 --    overviewProbe(27)                  <= tr_out_i;
---    overviewProbe(29 downto 28)        <= (others => '0');
+--    overviewProbe(28)                  <= elink_daq_wren;
+--    overviewProbe(29)                  <= '0';
 --    overviewProbe(30)                  <= level_0;
 --    overviewProbe(31)                  <= rst_l0_pf;
+--    overviewProbe(39 downto 32)        <= bitmask_null;
+--    overviewProbe(55 downto 40)        <= daq_data_out_i;
+--    overviewProbe(63 downto 56)        <= (others => '0');
+
 --    overviewProbe(47 downto 32)        <= vmmWord_i;
 --    overviewProbe(51 downto 48)        <= dt_cntr_st;
 --    overviewProbe(59 downto 52)        <= linkHealth_bmsk;
 --    overviewProbe(63 downto 60)        <= (others => '0');
+
 
     vmmSignalsProbe(7 downto 0)        <= (others => '0');
     vmmSignalsProbe(15 downto 8)       <= cktk_out_vec;

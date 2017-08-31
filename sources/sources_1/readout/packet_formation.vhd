@@ -87,6 +87,7 @@ entity packet_formation is
         elink_drv_ena   : in  std_logic;
         ro_rdy          : in  std_logic;
         elink_done      : in  std_logic;
+        pf_null_bmsk    : out std_logic_vector(7 downto 0);
         
         latency         : in std_logic_vector(15 downto 0);
         dbg_st_o        : out std_logic_vector(4 downto 0);
@@ -135,6 +136,7 @@ architecture Behavioral of packet_formation is
     signal elink_daq_wr_allow   : std_logic                     := '0';
     signal elink_aux_wr_i       : std_logic                     := '0';
     signal wrenable_i           : std_logic                     := '0';
+    signal pf_null_bmsk_i       : std_logic_vector(7 downto 0)  := (others => '0');
 
     type stateType is (waitingForNewCycle, increaseCounter, chkReady, waitForLatency, captureEventID, setEventID, sendHeaderStep1, sendHeaderStep2, 
                        sendHeaderStep3, triggerVmmReadout, waitForData, sendVmmDataStep1, sendVmmDataStep2, formTrailer, sendTrailer, packetDone, 
@@ -208,6 +210,7 @@ begin
         if reset = '1' then
             debug_state             <= "11111";
             eventCounter_i          <= to_unsigned(0, 32);
+            pf_null_bmsk_i          <= x"ff";
             tr_hold                 <= '0';
             pfBusy_i                <= '0';
             triggerVmmReadout_i     <= '0';
@@ -240,6 +243,7 @@ begin
                 elink_daq_wr_allow      <= '0';
                 start_pack              <= '0';
                 elink_aux_wr_i          <= '0';
+                pf_null_bmsk_i          <= x"ff";
                 sel_cnt                 <= (others => '0');
                 rst_FIFO                <= '0';
                 if newCycle = '1' then
@@ -282,6 +286,7 @@ begin
             when captureEventID =>      -- Form Header
                 debug_state         <= "00011";
                 packLen_cnt         <= x"000";
+                pf_null_bmsk_i      <= vmm_null_bmsk; -- sample the null event bitmask
                 state               <= setEventID;
                 
             when setEventID =>
@@ -330,7 +335,7 @@ begin
                 sel_cnt                     <= "110"; -- fix the counter to 4 to select the VMM data for the next steps
                 sel_wrenable                <= '1';   -- grant control to driver
 
-                if(vmm_null_bmsk(vmmId_cnt) = '1')then -- this vmm empty, do not write anything to the elink driver
+                if(pf_null_bmsk_i(vmmId_cnt) = '1')then -- this vmm empty, do not write anything to the elink driver
                     elink_daq_wr_allow <= '0';
                 else
                     elink_daq_wr_allow <= '1';
@@ -378,7 +383,7 @@ begin
                 end if;
 
             when sendTrailer =>
-                if(vmm_null_bmsk(vmmId_cnt) = '1')then -- this vmm empty, do not write anything to the elink aux FIFO
+                if(pf_null_bmsk_i(vmmId_cnt) = '1')then -- this vmm empty, do not write anything to the elink aux FIFO
                     elink_aux_wr_i <= '0';
                 else
                     elink_aux_wr_i <= '1';
@@ -439,7 +444,8 @@ begin
                 end if;
 
             when enableElink =>
-                if(vmm_null_bmsk = x"ff")then
+                 debug_state     <= "01111";
+                if(pf_null_bmsk_i = x"ff")then
                     start_pack  <= '0';
                     start_null  <= '1';
                 else
@@ -454,7 +460,7 @@ begin
                 end if;
                 
             when isTriggerOff =>            -- Wait for whatever ongoing trigger pulse to go to 0
-                debug_state <= "01111";
+                debug_state <= "10000";
                 start_pack  <= '0';
                 start_null  <= '0';
                 if trraw_synced125 /= '1' then
@@ -574,6 +580,7 @@ end process;
     --elink_aux_wr            <= elink_aux_wr_i and elink_drv_ena;
     --elink_aux_dout          <= vmmId_i & '0' & packLen_drv2pf;
     elink_tr_cnt            <= std_logic_vector(eventCounter_i(15 downto 0));
+    pf_null_bmsk            <= pf_null_bmsk_i;
 
 --ilaPacketFormation: ila_pf
 --port map(
