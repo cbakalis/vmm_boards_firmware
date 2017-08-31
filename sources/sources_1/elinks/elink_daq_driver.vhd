@@ -171,6 +171,9 @@ end component;
     signal cnt_timeout      : unsigned(15 downto 0) := (others => '0');
     signal adapt_done       : std_logic := '0';
     
+    signal empty_elink_i    : std_logic := '0';
+    signal empty_elink_s    : std_logic := '0';
+    
     -- E-LINK EOP and SOP
     constant SOP            : std_logic_vector(1 downto 0) := "10";
     constant MOP            : std_logic_vector(1 downto 0) := "00";
@@ -201,6 +204,10 @@ end component;
     attribute FSM_ENCODING of state_pack    : signal is "ONE_HOT";
     attribute FSM_ENCODING of state_null    : signal is "ONE_HOT";
     attribute FSM_ENCODING of state_adapt   : signal is "ONE_HOT";
+    
+    attribute ASYNC_REG : string;
+    attribute ASYNC_REG of empty_elink_i    : signal is "TRUE";
+    attribute ASYNC_REG of empty_elink_s    : signal is "TRUE";    
 
 begin
 
@@ -632,9 +639,9 @@ begin
 
             -- wait for elink to send it all
             when ST_WAIT =>
-                if(empty_elink = '1' and use_timeout = '1')then
+                if(empty_elink_s = '1' and use_timeout = '1')then
                     state_adapt <= ST_CNT;
-                elsif(empty_elink = '1' and use_timeout = '0')then
+                elsif(empty_elink_s = '1' and use_timeout = '0')then
                     state_adapt <= ST_DONE;
                 else
                     state_adapt <= ST_WAIT;
@@ -705,6 +712,9 @@ end process;
 sync_delay_proc: process(clk_in)
 begin
     if(rising_edge(clk_in))then
+        empty_elink_i <= empty_elink;
+        empty_elink_s <= empty_elink_i;        
+    
         din_daq_fifo    <= din_daq; -- register the daq data
         wr_en_fifo      <= wr_en_daq; -- register the wr_en
 
