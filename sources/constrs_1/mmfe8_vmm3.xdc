@@ -249,11 +249,11 @@ set_property IOSTANDARD DIFF_HSUL_12 [get_ports ELINK_DAQ_CLK_N]
 #160 mbps = 6.25
 #320 mbps = 3.125
 
-set_input_delay -clock ELINK_DAQ_CLK_P -max 0.100 [get_ports ELINK_DAQ_RX_P]
+#set_input_delay -clock ELINK_DAQ_CLK_P -max 0.100 [get_ports ELINK_DAQ_RX_P]
 
-set_input_delay -clock ELINK_DAQ_CLK_P -min 0.200 [get_ports ELINK_DAQ_RX_P]
+#set_input_delay -clock ELINK_DAQ_CLK_P -min 0.200 [get_ports ELINK_DAQ_RX_P]
 
-set_output_delay -clock ELINK_DAQ_CLK_P 2.000 [get_ports ELINK_DAQ_TX_P]
+#set_output_delay -clock ELINK_DAQ_CLK_P 2.000 [get_ports ELINK_DAQ_TX_P]
 
 
 #########################DATA0 VMM3#############################
