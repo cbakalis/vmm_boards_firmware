@@ -41,8 +41,8 @@ end led;
 architecture Behavioral of led is
     type state_type is (ST0, ST1, ST2, ST3, ST4);
     signal state        : state_type;
-    signal  count       : unsigned(20 downto 0) := (others => '0');
-    constant thr_int    : unsigned(20 downto 0) := "111111111111111111111";
+    signal  count       : unsigned(22 downto 0) := (others => '0');
+    constant thr_int    : unsigned(22 downto 0) := "11111111111111111111111";
     
 begin
 
