@@ -219,18 +219,19 @@ FSM_packet_drv: process(clk_in)
 begin
     if(rising_edge(clk_in))then
         if(start_pack = '0')then
-            rd_en_daq   <= '0';
-            flag_pack   <= SOP;
-            wr_ena_pack <= '0';
-            sent_one    <= '0';
-            first_vmm   <= '1';
-            pack_done   <= '0';
-            rd_en_aux   <= '0';
-            wait_cnt    <= (others => '0');
-            cnt_read    <= (others => '0');
-            cnt_mop     <= (others => '0');
-            len_cnt     <= (others => '0');
-            state_pack  <= ST_IDLE;
+            rd_en_daq       <= '0';
+            flag_pack       <= SOP;
+            wr_ena_pack     <= '0';
+            sent_one        <= '0';
+            first_vmm       <= '1';
+            pack_done       <= '0';
+            rd_en_aux       <= '0';
+            ena_adapt_pack  <= '0';
+            wait_cnt        <= (others => '0');
+            cnt_read        <= (others => '0');
+            cnt_mop         <= (others => '0');
+            len_cnt         <= (others => '0');
+            state_pack      <= ST_IDLE;
         else
             case state_pack is
 
@@ -455,17 +456,18 @@ begin
                 end if;
 
             when others =>
-                rd_en_daq   <= '0';
-                flag_pack   <= SOP;
-                wr_ena_pack <= '0';
-                sent_one    <= '0';
-                pack_done   <= '0';
-                first_vmm   <= '1';
-                rd_en_aux   <= '0';
-                cnt_read    <= (others => '0');
-                wait_cnt    <= (others => '0');
-                cnt_mop     <= (others => '0');
-                state_pack  <= ST_IDLE;
+                rd_en_daq       <= '0';
+                flag_pack       <= SOP;
+                wr_ena_pack     <= '0';
+                sent_one        <= '0';
+                pack_done       <= '0';
+                first_vmm       <= '1';
+                rd_en_aux       <= '0';
+                ena_adapt_pack  <= '0';
+                cnt_read        <= (others => '0');
+                wait_cnt        <= (others => '0');
+                cnt_mop         <= (others => '0');
+                state_pack      <= ST_IDLE;
 
             end case;
         end if;
@@ -523,6 +525,7 @@ begin
             wr_ena_null     <= '0';
             cnt_mop_null    <= '0';
             null_done       <= '0';
+            ena_adapt_null  <= '0';
             flag_null       <= SOP;
             wait_cnt_null   <= (others => '0');
             state_null      <= ST_IDLE;
@@ -603,6 +606,7 @@ begin
                 wr_ena_null     <= '0';
                 cnt_mop_null    <= '0';
                 null_done       <= '0';
+                ena_adapt_null  <= '0';
                 wait_cnt_null   <= (others => '0');
                 state_null      <= ST_IDLE;
             end case;
