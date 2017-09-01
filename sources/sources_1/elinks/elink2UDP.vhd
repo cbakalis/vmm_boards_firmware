@@ -52,6 +52,8 @@ port(
     ---------------------------
     ---- Elink Interface ------
     empty_elink     : in  std_logic;
+    half_full_elink : in  std_logic;
+    full_elink      : in  std_logic;
     rd_en_elink     : out std_logic;
     din_elink       : in  std_logic_vector(15 downto 0);
     ---------------------------
@@ -139,6 +141,9 @@ end component;
     attribute ASYNC_REG of rst_rx_s     : signal is "TRUE";
     attribute ASYNC_REG of error_led_s  : signal is "TRUE";
     attribute ASYNC_REG of error_led    : signal is "TRUE";
+    
+    signal debug_wr_fsm  : std_logic_vector(3 downto 0) := (others => '0');
+    signal debug_udp_fsm : std_logic_vector(3 downto 0) := (others => '0');
 
     type stateType_wrFSM is (ST_IDLE, ST_CHK_SOP, ST_WR_WORD, ST_CHK_FIFO, ST_CHK_EOP, ST_WR_EOP, ST_WR_LEN, ST_WAIT, ST_DONE);
     signal state_wr         : stateType_wrFSM := ST_IDLE;
@@ -165,6 +170,7 @@ begin
             rd_en_elink <= '0';
             error_led_i <= '0';
             wait_cnt    <= (others => '0');
+            debug_wr_fsm<= (others => '0');
             state_wr    <= ST_IDLE; 
         else
             case state_wr is
@@ -175,6 +181,7 @@ begin
                 wr_en_len   <= '0';
                 wr_en_daq   <= '0';
                 state_prv   <= ST_IDLE;
+                debug_wr_fsm<= "0001";
 
                 if(empty_elink = '0')then
                     rd_en_elink <= '1';
@@ -187,9 +194,10 @@ begin
             -- is this the ROC_SOP?
             when ST_CHK_SOP =>
                 wait_cnt        <= (others => '0');
+                debug_wr_fsm    <= "0010";
                 if(din_elink(15 downto 8) = ROC_SOP)then
                     state_wr    <= ST_WR_WORD;
-                elsif(din_elink(7 downto 0) = ROC_EOP)then -- missed the SOP, we are too slow
+                elsif(din_elink(15 downto 8) = x"00" and din_elink(7 downto 0) = ROC_EOP)then -- missed the SOP, we are too slow
                     error_led_i <= '1';
                     state_wr    <= ST_IDLE;
                 else -- not a ROC packet, back to idle
@@ -198,6 +206,7 @@ begin
 
             -- write the word
             when ST_WR_WORD =>
+                debug_wr_fsm    <= "0011";
                 if(full_daq = '1')then
                     error_led_i <= '1';    
                 else null;
@@ -209,6 +218,7 @@ begin
 
             -- is the fifo empty?
             when ST_CHK_FIFO =>
+                debug_wr_fsm    <= "0100";
                 wr_en_daq       <= '0';
                 state_prv       <= ST_CHK_FIFO;
                 if(empty_elink = '0')then
@@ -221,7 +231,8 @@ begin
 
             -- is this the ROC_EOP?
             when ST_CHK_EOP =>
-                if(din_elink(7 downto 0) = ROC_EOP)then
+                debug_wr_fsm    <= "0101";
+                if(din_elink(15 downto 8) = x"00" and din_elink(7 downto 0) = ROC_EOP)then
                     state_wr <= ST_WR_EOP;
                 else
                     state_wr <= ST_WR_WORD; -- not EOP, but still a packet...
@@ -229,6 +240,7 @@ begin
 
             -- write the ROC EOP
             when ST_WR_EOP =>
+                debug_wr_fsm    <= "0110";
                 if(full_daq = '1')then
                     error_led_i <= '1';    
                 else null;
@@ -241,6 +253,7 @@ begin
 
             -- write the length of the packet to the length FIFO
             when ST_WR_LEN =>
+                debug_wr_fsm    <= "0111";
                 if(full_len = '1')then
                     error_led_i <= '1';    
                 else null;
@@ -252,12 +265,14 @@ begin
 
             -- back to IDLE
             when ST_DONE =>
+                debug_wr_fsm<= "1000";
                 wr_en_len   <= '0';
                 state_wr    <= ST_IDLE;
 
             -- generic state that waits...
             when ST_WAIT =>
                 rd_en_elink     <= '0';
+                debug_wr_fsm    <= "1001";
                 if(wait_cnt = "10")then
                     case state_prv is
                     when ST_IDLE        => state_wr <= ST_CHK_SOP;
@@ -275,6 +290,7 @@ begin
                 wr_en_daq   <= '0';
                 rd_en_elink <= '0';
                 error_led_i <= '0';
+                debug_wr_fsm    <= (others => '0');
                 wait_cnt    <= (others => '0');
                 state_wr    <= ST_IDLE; 
             end case;
@@ -289,6 +305,7 @@ begin
         if(rst_rx_s = '1')then
             rd_en_len   <= '0';
             wait_udp    <= (others => '0');
+            debug_udp_fsm <= (others => '0');
             tx_start_i  <= '0';
             rd_en_daq   <= '0';
             last        <= '0';
@@ -298,6 +315,7 @@ begin
 
             -- check the status of the two FIFOs
             when ST_IDLE =>
+                debug_udp_fsm <= "0001";
                 if(empty_len = '0' and empty_daq = '0')then -- we have a packet ready
                     rd_en_len <= '1';
                     state_udp <= ST_WAIT;
@@ -306,6 +324,7 @@ begin
                 end if;
 
             when ST_WAIT =>
+                debug_udp_fsm <= "0010";
                 rd_en_len   <= '0';
                 wait_udp    <= wait_udp + 1;
                 if(wait_udp = "11")then
@@ -316,12 +335,14 @@ begin
 
             -- start the UDP sending process
             when ST_START =>
+                debug_udp_fsm <= "0011";
                 packLen_udp <= unsigned(dout_len);
                 tx_start_i  <= '1';
                 state_udp   <= ST_CHK_RDY;
 
             -- if ready, ground the start signal
             when ST_CHK_RDY =>
+                debug_udp_fsm <= "0100";
                 if(udp_tx_dout_rdy = '1')then
                     tx_start_i  <= '0';
                     state_udp   <= ST_RD_FIFO;
@@ -332,6 +353,7 @@ begin
 
             -- read the FIFO until the entire packet has been read
             when ST_RD_FIFO =>
+                debug_udp_fsm <= "0101";
                 packLen_udp <= packLen_udp - 1;
                 if(packLen_udp = x"0000")then
                     rd_en_daq   <= '0';
@@ -344,6 +366,7 @@ begin
                 end if;
 
             when ST_DONE =>
+                debug_udp_fsm <= "0110";
                 last        <= '0';
                 state_udp   <= ST_IDLE;
 
@@ -364,7 +387,7 @@ reg_udp_proc: process(clk_udp)
 begin
     if(rising_edge(clk_udp))then
         -- synchronizer
-        error_led_s                 <= error_led_i;
+        error_led_s                 <= error_led_i or full_elink;
         error_led                   <= error_led_s;
 
         rst_rx_i                    <= rst_rx;
@@ -387,7 +410,7 @@ begin
     end if;
 end process;
 
-FIFO_length: elink2UDP_daq
+FIFO_daq: elink2UDP_daq
   port map (
     rst         => rst_rx,
     wr_clk      => clk_elink,
@@ -402,7 +425,7 @@ FIFO_length: elink2UDP_daq
     rd_rst_busy => rd_Rbusy_daq
   ); 
 
-FIFO_daq: elink2UDP_len
+FIFO_len: elink2UDP_len
   port map (
     rst         => rst_rx,
     wr_clk      => clk_elink,

@@ -192,6 +192,7 @@ port (
     efifoRe     : in  std_logic; 
     efifoHF     : out std_logic; -- half-full flag: 1 KByte block is ready to be read
     efifoEmpty  : out std_logic; -- new
+    fifo_full   : out std_logic;
     efifoDout   : out std_logic_vector (15 downto 0)
     ------
     );
@@ -208,6 +209,8 @@ port(
     ---------------------------
     ---- Elink Interface ------
     empty_elink     : in  std_logic;
+    half_full_elink : in  std_logic;
+    full_elink      : in  std_logic;
     rd_en_elink     : out std_logic;
     din_elink       : in  std_logic_vector(15 downto 0);
     ---------------------------
@@ -251,6 +254,8 @@ end component;
     signal driver_ena           : std_logic := '0';
     signal rd_ena               : std_logic := '0';
     signal tester_ena           : std_logic := '0'; 
+    
+    signal fifo_full_rx         : std_logic := '0';
     
     attribute mark_debug        : string;
     attribute dont_touch        : string;
@@ -367,6 +372,7 @@ port map(
     efifoRe     => rd_ena, 
     efifoHF     => half_full_rx,
     efifoEmpty  => empty_elink_rx,
+    fifo_full   => fifo_full_rx,
     efifoDout   => dout_elink2fifo
     ------
     );
@@ -382,6 +388,8 @@ port map(
     ---------------------------
     ---- Elink Interface ------
     empty_elink     => empty_elink_rx,
+    full_elink      => fifo_full_rx,
+    half_full_elink => half_full_rx,
     rd_en_elink     => rd_ena,
     din_elink       => dout_elink2fifo_inv,
     ---------------------------

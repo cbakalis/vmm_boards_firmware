@@ -24,6 +24,7 @@ port (
     dout        : out std_logic_vector(15 downto 0);
     almost_full : out std_logic;
     fifo_empty  : out std_logic;
+    fifo_full   : out std_logic;
     prog_full   : out std_logic
     );
 end EPATH_FIFO_WRAP;
@@ -64,23 +65,24 @@ wr_en_s <= wr_en and (not rst_state);
 --
 EPATH_FIFO_INST: EPATH_FIFO 
 PORT MAP (
-	wr_clk     => wr_clk, 
-	rst        => fifoFlush,
-	rd_clk     => rd_clk, 
-	din        => din,
-	wr_en      => wr_en_s,
-	rd_en      => rd_en_s,
-	dout       => dout,
-	full       => full_s,
-	empty      => empty_s,
-	prog_full  => prog_full_s,
-	prog_empty => prog_empty_s,
-	prog_full_thresh  => std_logic_vector(to_unsigned(512, 10)),
+    wr_clk     => wr_clk, 
+    rst        => fifoFlush,
+    rd_clk     => rd_clk, 
+    din        => din,
+    wr_en      => wr_en_s,
+    rd_en      => rd_en_s,
+    dout       => dout,
+    full       => full_s,
+    empty      => empty_s,
+    prog_full  => prog_full_s,
+    prog_empty => prog_empty_s,
+    prog_full_thresh  => std_logic_vector(to_unsigned(512, 10)),
     prog_empty_thresh => std_logic_vector(to_unsigned(1010, 10))
 );
 --
 rst_state   <= rst or (full_s and empty_s);
 fifo_empty  <= empty_s;
+fifo_full   <= full_s;
 --
 process(rd_clk)
 begin

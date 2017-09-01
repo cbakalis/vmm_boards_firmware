@@ -39,6 +39,7 @@ port (
     efifoRe     : in  std_logic; 
     efifoHF     : out std_logic; -- half-full flag: 1 KByte block is ready to be read
     efifoEmpty  : out std_logic;
+    fifo_full   : out std_logic;
     efifoDout   : out std_logic_vector (15 downto 0)
     ------
     );
@@ -294,6 +295,7 @@ port map (
     dout        => efifoDout,
     almost_full => almost_full,
     fifo_empty  => efifoEmpty,
+    fifo_full   => fifo_full,
     prog_full   => efifoHF -- Half-Full - output: 1Kbyte block is ready
     );
 
