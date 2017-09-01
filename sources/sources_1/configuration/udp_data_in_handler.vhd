@@ -62,8 +62,7 @@ entity udp_data_in_handler is
     clk_40              : in  std_logic;
     inhibit_conf        : in  std_logic;
     rst                 : in  std_logic;
-    state_o             : out std_logic_vector(2 downto 0);
-    valid_o             : out std_logic;
+    rst_fifo_init       : in  std_logic;
     ------------------------------------
     -------- FPGA Config Interface -----
     latency             : out std_logic_vector(15 downto 0);
@@ -104,15 +103,26 @@ entity udp_data_in_handler is
     vmm_second_rd_start : out std_logic;
     command             : out std_logic_vector(15 downto 0);
     top_rdy             : in  std_logic;
+    sample_end          : out std_logic;
+    head_wr_done        : in  std_logic;
+    second_rcv          : in  std_logic;
+    vmm_fsm_reset       : out std_logic;
+    ------------------------------------
+    ------------- Debugging ------------
+    state_o             : out std_logic_vector(2 downto 0); 
+    conf_st_o           : out std_logic_vector(1 downto 0);
+    last_o              : out std_logic;
+    valid_o             : out std_logic;
+    data_o              : out std_logic_vector(7 downto 0);
+    cnt_bytes_o         : out std_logic_vector(7 downto 0);
     ------------------------------------
     ---------- XADC Interface ----------
     xadc_busy           : in  std_logic;
     xadc_rdy            : out std_logic;
     vmm_id_xadc         : out std_logic_vector(15 downto 0);
     xadc_sample_size    : out std_logic_vector(10 downto 0);
-    xadc_delay          : out std_logic_vector(17 downto 0);
+    xadc_delay          : out std_logic_vector(17 downto 0)
     
-    sample_end          : out std_logic
     );
 end udp_data_in_handler;
 
@@ -124,7 +134,7 @@ architecture RTL of udp_data_in_handler is
         ------- General Interface ----------
         clk_125             : in  std_logic;
         rst                 : in  std_logic;
---       rst_fifo_init       : in  std_logic;
+        rst_fifo_init       : in  std_logic;
         cnt_bytes           : in  unsigned(7 downto 0);
         user_din_udp        : in  std_logic_vector(7 downto 0);
         ------------------------------------
@@ -163,6 +173,8 @@ architecture RTL of udp_data_in_handler is
         daq_on              : out std_logic;
         ext_trigger         : out std_logic;
         ckbcMode            : out std_logic
+        ------------------------------------
+
     );
     END COMPONENT;
 
@@ -173,8 +185,9 @@ architecture RTL of udp_data_in_handler is
         clk_125             : in  std_logic;
         clk_40              : in  std_logic;
         rst                 : in  std_logic;
-        rst_ram            : in  std_logic;
+        rst_ram             : in  std_logic;
         cnt_bytes           : in  unsigned(7 downto 0);
+        fsm_reset           : out std_logic;
         ------------------------------------
         --------- FIFO/UDP Interface -------
         user_din_udp        : in  std_logic_vector(7 downto 0);
@@ -191,7 +204,11 @@ architecture RTL of udp_data_in_handler is
         top_rdy             : in  std_logic;
         init_ser            : in  std_logic;
         first_rd_done       : out std_logic;
-        second_rd_start     : out std_logic
+        second_rd_start     : out std_logic;
+        head_wr_done        : in std_logic;
+        second_rcv          : in std_logic;
+        ------------------------------------
+        conf_st_o           : out std_logic_vector(1 downto 0)
     );
     END COMPONENT;
 
@@ -219,7 +236,8 @@ architecture RTL of udp_data_in_handler is
     signal fpga_conf            : std_logic := '0';
     signal flash_conf           : std_logic := '0';
     signal xadc_conf            : std_logic := '0';
-    signal rst_ram              : std_logic := '0';
+    signal rst_fifo_vmmConf     : std_logic := '0';    
+    signal rst_ram_i            : std_logic := '0';
     signal rst_ram_s40          : std_logic := '0';
     signal xadcPacket_rdy       : std_logic := '0';
     signal flashPacket_rdy      : std_logic := '0';
@@ -228,8 +246,14 @@ architecture RTL of udp_data_in_handler is
     signal init_ser_s40         : std_logic := '0';
     signal top_rdy_s40          : std_logic := '0';
     signal fpga_rst_i           : std_logic := '0';
+    signal sample_end_i         : std_logic := '0';
     
-    type masterFSM is (ST_IDLE, ST_CHK_PORT, ST_COUNT, ST_WAIT_FOR_BUSY, ST_WAIT_FOR_IDLE, ST_RESET_FIFO, ST_WAIT_FOR_SCK_FSM, ST_ERROR);
+    signal fsm_reset            : std_logic := '0';
+    signal fsm_reset_s          : std_logic := '0';
+    signal rst_vmm_conf         : std_logic := '0';
+    signal rst_vmm_conf_s       : std_logic := '0';
+    
+    type masterFSM is (ST_IDLE, ST_CHK_PORT, ST_COUNT, ST_RST_VMM_CONF, ST_WAIT_FOR_BUSY, ST_WAIT_FOR_IDLE, ST_RESET_FIFO, ST_WAIT_FOR_SCK_FSM, ST_ERROR);
     signal st_master : masterFSM := ST_IDLE;
     
     ---- Uncomment the following to add signals to ILA debugging core
@@ -237,53 +261,53 @@ architecture RTL of udp_data_in_handler is
     attribute mark_debug : string;
     attribute keep       : string;
 
-    --attribute mark_debug of latency                   : signal is "true";
-    --attribute mark_debug of fpga_rst_conf             : signal is "true";
-    --attribute mark_debug of daq_on                    : signal is "true";
-    --attribute mark_debug of ext_trigger               : signal is "true";
-    --attribute mark_debug of udp_rx.data.data_in       : signal is "true";
-    --attribute mark_debug of udp_rx.data.data_in_valid : signal is "true";
-    --attribute mark_debug of udp_rx.data.data_in_last  : signal is "true";
-    --attribute mark_debug of udp_rx.hdr.dst_port       : signal is "true";
-    --attribute mark_debug of flash_busy                : signal is "true";
-    --attribute mark_debug of newIP_rdy                 : signal is "true";
-    --attribute mark_debug of myIP_set                  : signal is "true";
-    --attribute mark_debug of myMAC_set                 : signal is "true";
-    --attribute mark_debug of destIP_set                : signal is "true";
-    --attribute mark_debug of vmmConf_rdy               : signal is "true";
-    --attribute mark_debug of vmmConf_done              : signal is "true";
-    --attribute mark_debug of vmm_cktk                  : signal is "true";
-    --attribute mark_debug of vmm_cfg_bit               : signal is "true";
-    --attribute mark_debug of top_rdy                   : signal is "true";
-    --attribute mark_debug of xadc_busy                 : signal is "true";
-    --attribute mark_debug of xadc_rdy                  : signal is "true";
-    --attribute mark_debug of vmm_id_xadc               : signal is "true";
-    --attribute mark_debug of xadc_sample_size          : signal is "true";
-    --attribute mark_debug of xadc_delay                : signal is "true";
-    --attribute mark_debug of conf_state                : signal is "true";
-    --attribute keep of conf_state                      : signal is "true";
+    attribute mark_debug of latency                   : signal is "true";
+--    attribute mark_debug of fpga_rst_conf             : signal is "true";
+    attribute mark_debug of daq_on                    : signal is "true";
+    attribute mark_debug of ext_trigger               : signal is "true";
+--    attribute mark_debug of udp_rx.data.data_in       : signal is "true";
+--    attribute mark_debug of udp_rx.data.data_in_valid : signal is "true";
+--    attribute mark_debug of udp_rx.data.data_in_last  : signal is "true";
+--    attribute mark_debug of udp_rx.hdr.dst_port       : signal is "true";
+    attribute mark_debug of flash_busy                : signal is "true";
+    attribute mark_debug of newIP_rdy                 : signal is "true";
+    attribute mark_debug of myIP_set                  : signal is "true";
+    attribute mark_debug of myMAC_set                 : signal is "true";
+    attribute mark_debug of destIP_set                : signal is "true";
+    attribute mark_debug of vmmConf_rdy               : signal is "true";
+    attribute mark_debug of vmmConf_done              : signal is "true";
+ --   attribute mark_debug of vmm_cktk                  : signal is "true";
+    attribute mark_debug of vmm_cfg_bit               : signal is "true";
+    attribute mark_debug of top_rdy                   : signal is "true";
+    attribute mark_debug of xadc_busy                 : signal is "true";
+    attribute mark_debug of xadc_rdy                  : signal is "true";
+    attribute mark_debug of vmm_id_xadc               : signal is "true";
+    attribute mark_debug of xadc_sample_size          : signal is "true";
+    attribute mark_debug of xadc_delay                : signal is "true";
+    attribute mark_debug of conf_state                : signal is "true";
+    attribute keep of conf_state                      : signal is "true";
 
-    --attribute mark_debug of user_data_prv     : signal is "true";
-    --attribute mark_debug of user_valid_prv    : signal is "true";
-    --attribute mark_debug of user_valid_fifo   : signal is "true";
-    --attribute mark_debug of user_last_prv     : signal is "true";
-    --attribute mark_debug of cnt_bytes         : signal is "true";
-    --attribute mark_debug of wait_cnt          : signal is "true";
-    --attribute mark_debug of vmm_ser_done      : signal is "true";
-    --attribute mark_debug of vmm_conf_rdy      : signal is "true";
-    --attribute mark_debug of fpga_conf         : signal is "true";
-    --attribute mark_debug of flash_conf        : signal is "true";
-    --attribute mark_debug of sel_vmm_data      : signal is "true";
-    --attribute mark_debug of xadc_conf         : signal is "true";
-    --attribute mark_debug of rst_fifo          : signal is "true";
-    --attribute mark_debug of xadcPacket_rdy    : signal is "true";
-    --attribute mark_debug of flashPacket_rdy   : signal is "true";
-    --attribute mark_debug of fpgaPacket_rdy    : signal is "true";
-    --attribute mark_debug of fpga_conf_1of2    : signal is "true";
-    --attribute mark_debug of fpga_conf_2of2    : signal is "true";
-    --attribute mark_debug of rd_ena            : signal is "true";
-    --attribute mark_debug of fifo_full         : signal is "true";
-    --attribute mark_debug of fifo_empty        : signal is "true";
+    attribute mark_debug of user_data_prv     : signal is "true";
+    attribute mark_debug of user_valid_prv    : signal is "true";
+--    attribute mark_debug of user_valid_fifo   : signal is "true";
+    attribute mark_debug of user_last_prv     : signal is "true";
+    attribute mark_debug of cnt_bytes         : signal is "true";
+--    attribute mark_debug of wait_cnt          : signal is "true";
+    attribute mark_debug of vmm_ser_done      : signal is "true";
+    attribute mark_debug of vmm_conf_rdy      : signal is "true";
+    attribute mark_debug of fpga_conf         : signal is "true";
+    attribute mark_debug of flash_conf        : signal is "true";
+--    attribute mark_debug of sel_vmm_data      : signal is "true";
+    attribute mark_debug of xadc_conf         : signal is "true";
+--    attribute mark_debug of rst_fifo          : signal is "true";
+    attribute mark_debug of xadcPacket_rdy    : signal is "true";
+    attribute mark_debug of flashPacket_rdy   : signal is "true";
+    attribute mark_debug of fpgaPacket_rdy    : signal is "true";
+--    attribute mark_debug of fpga_conf_1of2    : signal is "true";
+--    attribute mark_debug of fpga_conf_2of2    : signal is "true";
+--    attribute mark_debug of rd_ena            : signal is "true";
+--    attribute mark_debug of fifo_full         : signal is "true";
+--    attribute mark_debug of fifo_empty        : signal is "true";
 
     --------------- List of Processes/FSMs ----------------
     -------------------------------------------------------
@@ -318,7 +342,7 @@ begin
             xadc_conf   <= '0';
             sample_hdr  <= '0';
             init_ser    <= '0';
-            rst_ram    <= '1';
+            --rst_ram_i   <= '1';
             st_master   <= ST_IDLE;
         else
             case st_master is
@@ -330,7 +354,8 @@ begin
                 fpga_conf   <= '0';
                 flash_conf  <= '0';
                 xadc_conf   <= '0';
-                rst_ram    <= '0';
+                rst_vmm_conf     <= '0';
+                rst_ram_i  <= '0';
 
                 if(udp_rx.data.data_in_valid = '1' and inhibit_conf = '0')then
                     cnt_bytes   <= cnt_bytes + 1;
@@ -417,11 +442,12 @@ begin
             when ST_RESET_FIFO =>
                 conf_state  <= "101";
                 if(vmmSer_done_s125 = '1' and top_rdy = '0')then -- flow_fsm is back to IDLE + serialization has finished => reset
-                    rst_ram     <= '1';
+                --if(top_rdy = '0')then  
+                  --rst_ram_i   <= '1';
                     init_ser    <= '0';
                     st_master   <= ST_WAIT_FOR_SCK_FSM;
                 else
-                    rst_ram     <= '0';     -- serialization not finished or flow_fsm is not in IDLE, wait
+                   -- rst_ram_i   <= '0';     -- serialization not finished or flow_fsm is not in IDLE, wait
                     init_ser    <= '1';
                     st_master   <= ST_RESET_FIFO;
                 end if;
@@ -430,11 +456,20 @@ begin
             when ST_WAIT_FOR_SCK_FSM =>
                 conf_state  <= "110";
                 if(vmmSer_done_s125 = '0' and udp_rx.data.data_in_valid = '0')then
-                    rst_ram     <= '0';
-                    st_master   <= ST_IDLE;
+                    --rst_ram_i   <= '0';
+                    st_master   <= ST_RST_VMM_CONF;
                 else
-                    rst_ram     <= '1';
+                    --rst_ram_i   <= '1';
                     st_master   <= ST_WAIT_FOR_SCK_FSM;
+                end if;
+                
+            when ST_RST_VMM_CONF =>
+                conf_state  <= "111";
+                rst_vmm_conf <= '1';
+                if(fsm_reset_s = '1')then
+                    st_master <= ST_RST_VMM_CONF;
+                else
+                    st_master <= ST_IDLE;
                 end if;
             
             -- stay here until the UDP packet passes    
@@ -468,25 +503,27 @@ begin
                 serial_number(15 downto 8)  <= user_data_prv;
             when "00000100" => --4
                 serial_number(7 downto 0)   <= user_data_prv;
-
             -- sample bitmask
             when "00000110" => --6
                 vmm_bitmask                 <= user_data_prv;
-
             -- sample command
             when "00000111" => --7
                 command(15 downto 8)        <= user_data_prv;
             when "00001000" => --8
                 command(7 downto 0)         <= user_data_prv;
             when "00001001" =>
-                sample_end                  <= '1';
+                sample_end_i                <= '1';
+            when "00010000" =>
+                sample_end_i                <= '0';
             when others => null;
             end case;
         else 
-            sample_end                      <= '0';
+            sample_end_i                    <= '0';
         end if;
     end if;
 end process;
+
+sample_end <= sample_end_i;
 
 fpga_config_logic: fpga_config_block
     port map(
@@ -494,6 +531,7 @@ fpga_config_logic: fpga_config_block
         ------- General Interface ----------
         clk_125             => clk_125,
         rst                 => rst,
+        rst_fifo_init       => rst_fifo_init,
         cnt_bytes           => cnt_bytes,
         user_din_udp        => user_data_prv,
         ------------------------------------
@@ -540,9 +578,10 @@ vmm_config_logic: vmm_config_block
         ------- General Interface ----------
         clk_125             => clk_125,
         clk_40              => clk_40,
-        rst                 => rst,
+        rst                 => rst_vmm_conf_s,
         rst_ram             => rst_ram_s40,
         cnt_bytes           => cnt_bytes,
+        fsm_reset           => fsm_reset,
         ------------------------------------
         --------- FIFO/UDP Interface -------
         user_din_udp        => user_data_prv,
@@ -559,16 +598,28 @@ vmm_config_logic: vmm_config_block
         top_rdy             => top_rdy_s40,
         init_ser            => init_ser_s40,
         second_rd_start     => vmm_second_rd_start,
-        first_rd_done       => vmm_first_rd_done
+        first_rd_done       => vmm_first_rd_done,
+        head_wr_done        => head_wr_done,
+        second_rcv          => second_rcv,
+        -------------------------------------
+        conf_st_o           => conf_st_o
+        
     );
 
-    xadc_rdy        <= xadcPacket_rdy;
-    newIP_rdy       <= flashPacket_rdy;
-    vmmConf_rdy     <= init_ser;
-    vmmConf_done    <= vmmSer_done_s125;
-    state_o         <= std_logic_vector(conf_state);
-    valid_o         <= user_valid_prv;
-    vmmConf_came    <= vmm_conf;
+    xadc_rdy         <= xadcPacket_rdy;
+    newIP_rdy        <= flashPacket_rdy;
+    vmmConf_rdy      <= init_ser;
+    vmmConf_done     <= vmmSer_done_s125;
+    state_o          <= std_logic_vector(conf_state);
+    valid_o          <= user_valid_prv;
+    last_o           <= user_last_prv;
+    data_o           <= user_data_prv;
+    rst_fifo_vmmconf <= rst_ram_i or rst_fifo_init;
+    vmmConf_came     <= vmm_conf;
+    vmm_fsm_reset    <= fsm_reset_s;
+    
+    cnt_bytes_o      <= std_logic_vector(cnt_bytes);
+
 
 glbl_rst_buf: BUFG port map (O => fpga_rst, I => fpga_rst_i);
 
@@ -577,27 +628,31 @@ glbl_rst_buf: BUFG port map (O => fpga_rst, I => fpga_rst_i);
 ---------------------------------------------------------
 
 CDCC_125to40: CDCC
-    generic map(NUMBER_OF_BITS => 3)
+    generic map(NUMBER_OF_BITS => 4)
     port map(
         clk_src         => clk_125,
         clk_dst         => clk_40,
   
         data_in(0)      => init_ser,
-        data_in(1)      => rst_ram,
+        data_in(1)      => rst_fifo_vmmconf,
         data_in(2)      => top_rdy,
+        data_in(3)      => rst_vmm_conf,
         data_out_s(0)   => init_ser_s40,
         data_out_s(1)   => rst_ram_s40,
-        data_out_s(2)   => top_rdy_s40
+        data_out_s(2)   => top_rdy_s40,
+        data_out_s(3)   => rst_vmm_conf_s
     );
 
 CDCC_40to125: CDCC
-    generic map(NUMBER_OF_BITS => 1)
+    generic map(NUMBER_OF_BITS => 2)
     port map(
         clk_src         => clk_40,
         clk_dst         => clk_125,
   
         data_in(0)      => vmm_ser_done,
-        data_out_s(0)   => vmmSer_done_s125
+        data_in(1)      => fsm_reset,
+        data_out_s(0)   => vmmSer_done_s125,
+        data_out_s(1)   => fsm_reset_s
     );
 ---------------------------------------------------------
 ---------------------------------------------------------

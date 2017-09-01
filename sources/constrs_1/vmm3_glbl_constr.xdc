@@ -1,7 +1,7 @@
 #======================= TIMING ASSERTIONS SECTION ====================
 #============================= Primary Clocks =========================
 create_clock -period 5.000 -name X_2V5_DIFF_CLK_P -waveform {0.000 2.500} [get_ports X_2V5_DIFF_CLK_P]
-create_clock -period 8.000 -name gtrefclk_p       -waveform {0.000 4.000} [get_ports gtrefclk_p]
+create_clock -period 8.000 -name gtrefclk_p -waveform {0.000 4.000} [get_ports gtrefclk_p]
 
 #============================= Virtual Clocks =========================
 #============================= Generated Clocks =======================
@@ -13,7 +13,6 @@ create_generated_clock -name clk_sck -source [get_pins -hierarchical *axi_SPI/ex
 ## SPI FLASH END ##
 
 # Continuous readout generated clock
-create_generated_clock -name roClkCont -source [get_pins mmcm_master/inst/mmcm_adv_inst/CLKOUT3] -divide_by 2 [get_pins readout_vmm/continuousReadoutMode.readout_vmm_cont/vmm_ckdt_i_reg/Q]
 
 # CKBC generated clock
 create_generated_clock -name ckbc_clk -source [get_pins mmcm_master/inst/mmcm_adv_inst/CLKOUT0] -divide_by 4 [get_pins ckbc_cktp_generator/ckbc_generator/ckbc_out_reg/Q]
@@ -75,61 +74,59 @@ set_output_delay -clock clk_sck -min -2.950 [get_ports IO*_IO]
 #=============================== False Paths ==========================
 set_false_path -from [get_ports CH_TRIGGER]
 
+set_false_path -from [get_cells udp_din_conf_block/vmm_config_logic/second_rd_start_reg] -to [get_cells udp_reply_instance/second_rd_0_reg]
+set_false_path -from [get_cells udp_din_conf_block/vmm_config_logic/vmm_sck_reg] -to [get_cells udp_reply_instance/vmm_sck_0_reg]
+
 # Global reset false path
 set_false_path -reset_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_rst_reg]
 set_false_path -reset_path -from [get_cells i2c_module/phy_resetn_reg]
 
 # ART readout
-set_false_path -from [get_cells art_instance/vmmArtData_reg[*]] -to [get_cells art_instance/vmmArtData160_125_reg[*]]
+set_false_path -from [get_cells {art_instance/vmmArtData_reg[*]}] -to [get_cells {art_instance/vmmArtData160_125_reg[*]}]
 set_false_path -from [get_cells art_instance/vmmArtReady160_reg] -to [get_cells art_instance/vmmArtReady160_125_reg]
 set_false_path -from [get_cells art_instance/enableReadout125_reg] -to [get_cells art_instance/enableReadout125_160_reg]
 
 # FPGA configuration registers false paths
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/ckbc_out_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/count_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/count_ro_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/ckbc_ro_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/cktp_start_aligned_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_skew_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]}] -to [get_cells ckbc_cktp_generator/ckbc_generator/ckbc_out_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]}] -to [get_cells {ckbc_cktp_generator/ckbc_generator/count_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_skew_i_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ckbcMode_reg] -to [get_pins ckbc_cktp_generator/CKBC_BUFGMUX/CE0]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_skew_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/align_cnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktk_max_num_i_reg[*]] -to [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/cktk_max_i_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_width_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_width_i_reg[*]] -to [get_cells trigger_instance/cktp_trint_module/state_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_period_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_width_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_period_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/latency_i_reg[*]] -to [get_cells trigger_instance/generate_2ckbc.trigLatencyCnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/latency_i_reg[*]] -to [get_cells trigger_instance/generate_2ckbc.state_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_max_num_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_max_module/inhibit_async_i_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_max_num_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_max_module/cktp_cnt_state_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_start_aligned_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_max_num_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_max_module/cktp_inhibit_fsm_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_max_num_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/state_cnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_max_num_i_reg[*]] -to [get_cells ckbc_cktp_generator/ckbc_generator/ckbc_inhibit_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_width_i_reg[*]] -to [get_cells trigger_instance/cktp_trint_module/cktp_start_s_0_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_skew_i_reg[*]}] -to [get_cells {ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]}] -to [get_cells {ckbc_cktp_generator/cktp_generator/align_cnt_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_width_i_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_width_i_reg[*]}] -to [get_cells {trigger_instance/cktp_trint_module/state_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_period_i_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_width_i_reg[*]}] -to [get_cells {ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_period_i_reg[*]}] -to [get_cells {ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]}] -to [get_cells {ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]}] -to [get_cells {ckbc_cktp_generator/cktp_generator/cktp_cnt_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_max_num_i_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_max_module/inhibit_async_i_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_max_num_i_reg[*]}] -to [get_cells {ckbc_cktp_generator/cktp_max_module/cktp_cnt_state_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/ckbc_freq_i_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_start_aligned_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_max_num_i_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_max_module/cktp_inhibit_fsm_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_width_i_reg[*]}] -to [get_cells trigger_instance/cktp_trint_module/cktp_start_s_0_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ckbcMode_reg] -to [get_cells ckbc_cktp_generator/ckbc_generator/readout_mode_i_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_max_num_i_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_max_module/fsm_enable_i_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/cktp_max_num_i_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_max_module/fsm_enable_i_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ckbcMode_reg] -to [get_cells trigger_instance/ckbcMode_stage1_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ckbcMode_reg] -to [get_cells ckbc_cktp_generator/cktp_generator/ckbc_mode_i_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/latency_i_reg[*]] -to [get_cells trigger_instance/generate_level0.trigLatencyCnt_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/latency_i_reg[*]] -to [get_cells trigger_instance/generate_level0.accept_wr_i_reg]
-set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/latency_i_reg[*]] -to [get_cells trigger_instance/generate_level0.state_l0_reg[*]]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/latency_i_reg[*]}] -to [get_cells {trigger_instance/generate_level0.trigLatencyCnt_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/latency_i_reg[*]}] -to [get_cells trigger_instance/generate_level0.accept_wr_i_reg]
+set_false_path -from [get_cells {udp_din_conf_block/fpga_config_logic/fpga_conf_router_inst/latency_i_reg[*]}] -to [get_cells {trigger_instance/generate_level0.state_l0_reg[*]}]
+
+##vmm Configuration related
+set_false_path -from [get_cells udp_reply_instance/head_wr_done_reg] -to [get_cells udp_din_conf_block/vmm_config_logic/head_wr_done_0_reg]
 
 # CKTP/CKBC enabling false path
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ext_trigger_reg] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_start_i_reg]
-set_false_path -from [get_cells rstFIFO_flow_reg]      -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_primary_i_reg]
+set_false_path -from [get_cells rstFIFO_flow_reg] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_primary_i_reg]
 #set_false_path -from [get_cells ckbc_enable_reg]      -to [get_cells ckbc_cktp_generator/ckbc_generator/ready_i_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ext_trigger_reg] -to [get_cells ckbc_cktp_generator/cktp_max_module/inhibit_async_i_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ext_trigger_reg] -to [get_cells ckbc_cktp_generator/cktp_max_module/fsm_enable_i_reg]
-set_false_path -from [get_cells FSM_sequential_state_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_max_module/inhibit_async_i_reg]
-set_false_path -from [get_cells FSM_sequential_state_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_start_i_reg]
-set_false_path -from [get_cells FSM_sequential_state_reg[*]] -to [get_cells ckbc_cktp_generator/cktp_max_module/fsm_enable_i_reg]
-set_false_path -from [get_cells FSM_sequential_state_reg[*]] -to [get_cells trigger_instance/cktp_trint_module/cktp_start_s_0_reg]
+set_false_path -from [get_cells {FSM_sequential_state_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_max_module/inhibit_async_i_reg]
+set_false_path -from [get_cells {FSM_sequential_state_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_generator/cktp_start_i_reg]
+set_false_path -from [get_cells {FSM_sequential_state_reg[*]}] -to [get_cells ckbc_cktp_generator/cktp_max_module/fsm_enable_i_reg]
+set_false_path -from [get_cells {FSM_sequential_state_reg[*]}] -to [get_cells trigger_instance/cktp_trint_module/cktp_start_s_0_reg]
 set_false_path -from [get_cells udp_din_conf_block/fpga_config_logic/ext_trigger_reg] -to [get_cells trigger_instance/cktp_trint_module/cktp_start_s_0_reg]
 #set_false_path -from [get_cells ckbc_cktp_generator/cktp_trint_module/trint_i_reg] -to [get_cells ckbc_cktp_generator/cktp_trint_module/trint_s_0_reg]
 
@@ -144,36 +141,30 @@ set_false_path -from [get_cells trigger_instance/trext_ff_synced_reg] -to [get_c
 #set_false_path -from [get_cells ckbc_cktp_generator/cktp_trint_module/trint_s_reg] -to [get_cells trigger_instance/trint_stage1_reg]
 
 # AXI SPI related false paths
-set_false_path -from [get_cells axi4_spi_instance/CDCC_50to125/data_in_reg_reg[*]] -to [get_cells axi4_spi_instance/CDCC_50to125/data_sync_stage_0_reg[*]]
-set_false_path -from [get_cells axi4_spi_instance/CDCC_125to50/data_in_reg_reg[*]] -to [get_cells axi4_spi_instance/CDCC_125to50/data_sync_stage_0_reg[*]]
+set_false_path -from [get_cells {axi4_spi_instance/CDCC_50to125/data_in_reg_reg[*]}] -to [get_cells {axi4_spi_instance/CDCC_50to125/data_sync_stage_0_reg[*]}]
+set_false_path -from [get_cells {axi4_spi_instance/CDCC_125to50/data_in_reg_reg[*]}] -to [get_cells {axi4_spi_instance/CDCC_125to50/data_sync_stage_0_reg[*]}]
 
 # UDP configuration related false paths
-set_false_path -from [get_cells udp_din_conf_block/CDCC_40to125/data_in_reg_reg[*]] -to [get_cells udp_din_conf_block/CDCC_40to125/data_sync_stage_0_reg[*]]
-set_false_path -from [get_cells udp_din_conf_block/CDCC_125to40/data_in_reg_reg[*]] -to [get_cells udp_din_conf_block/CDCC_125to40/data_sync_stage_0_reg[*]]
+set_false_path -from [get_cells {udp_din_conf_block/CDCC_40to125/data_in_reg_reg[*]}] -to [get_cells {udp_din_conf_block/CDCC_40to125/data_sync_stage_0_reg[*]}]
+set_false_path -from [get_cells {udp_din_conf_block/CDCC_125to40/data_in_reg_reg[*]}] -to [get_cells {udp_din_conf_block/CDCC_125to40/data_sync_stage_0_reg[*]}]
 
 # MMCM related false paths
 #set_false_path -from [get_cells clk_400_low_jitter_inst/inst/seq_reg1_reg[*]] -to [get_cells clk_400_low_jitter_inst/inst/clkout1_buf]
 
 # Continuous Readout related false paths
 #125
-set_false_path -from [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/vmmEventDone_i_reg] -to [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/vmmEventDone_i_125_reg]
-set_false_path -from [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/reading_out_word_reg] -to [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/reading_out_word_i_125_reg]
 
 #50
-set_false_path -from [get_cells daq_enable_i_reg] -to [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/daq_enable_stage1_Dt_reg]
-set_false_path -from [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/cktkSent_reg] -to [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/cktkSent_stage1_reg]
 
 #40
-set_false_path -from [get_cells packet_formation_instance/triggerVmmReadout_i_reg] -to [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/trigger_pulse_stage1_reg]
-set_false_path -from [get_cells daq_enable_i_reg] -to [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/daq_enable_stage1_reg]
-set_false_path -from [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/reading_out_word_reg] -to [get_cells readout_vmm/continuousReadoutMode.readout_vmm_cont/reading_out_word_stage1_reg]
 
 # Level-0 Readout related false paths
-set_false_path -from [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].l0_buf_wr_inst/inhibit_write_reg] -to [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].l0_buf_wr_inst/inhib_wr_i_reg]
-set_false_path -from [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].des_dec_inst/commas_true_reg] -to [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].l0_buf_wr_inst/commas_true_i_reg]
+set_false_path -from [get_cells {readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].l0_buf_wr_inst/inhibit_write_reg}] -to [get_cells {readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].l0_buf_wr_inst/inhib_wr_i_reg}]
+set_false_path -from [get_cells {readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].des_dec_inst/commas_true_reg}] -to [get_cells {readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].l0_buf_wr_inst/commas_true_i_reg}]
 set_false_path -from [get_cells trigger_instance/generate_level0.accept_wr_i_reg] -to [get_cells trigger_instance/accept_wr_i_stage1_reg]
 set_false_path -from [get_cells packet_formation_instance/pfBusy_i_reg] -to [get_cells trigger_instance/pfBusy_stage1_reg]
-set_false_path -from [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].des_dec_inst/commas_true_reg] -to [get_cells readout_vmm/level0_readout_case.readout_vmm_l0/commas_true_s0_reg[*]]
+set_false_path -from [get_cells {readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].des_dec_inst/commas_true_reg}] -to [get_cells {readout_vmm/level0_readout_case.readout_vmm_l0/commas_true_s0_reg[*]}]
+set_false_path -from [get_cells {readout_vmm/level0_readout_case.readout_vmm_l0/readout_instances[*].des_dec_inst/commas_true_reg}] -to [get_cells {readout_vmm/level0_readout_case.readout_vmm_l0/commas_true_s0_reg[*]}]
 
 ## SPI FLASH BEGIN ##
 # this is to ensure min routing delay from SCK generation to STARTUP input
@@ -185,10 +176,10 @@ set_min_delay -from [get_pins -hier *SCK_O_reg_reg/C] -to [get_pins -hier *USRCC
 #set_max_delay 10.000 -from [get_cells *user_side_FIFO/tx_fifo_i/*rd_addr_txfer*] -to [get_cells *user_side_FIFO/tx_fifo_i/wr_rd_addr*]
 #============================= Multicycle Paths =======================
 ## SPI FLASH BEGIN ##
-set_multicycle_path -setup -from clk_sck -to     [get_clocks -of_objects [get_pins -hierarchical *ext_spi_clk]] 2
+set_multicycle_path -setup -from clk_sck -to [get_clocks -of_objects [get_pins -hierarchical *ext_spi_clk]] 2
 set_multicycle_path -hold -end -from clk_sck -to [get_clocks -of_objects [get_pins -hierarchical *ext_spi_clk]] 1
-set_multicycle_path -setup -start -from          [get_clocks -of_objects [get_pins -hierarchical *ext_spi_clk]] -to clk_sck 2
-set_multicycle_path -hold -from                  [get_clocks -of_objects [get_pins -hierarchical *ext_spi_clk]] -to clk_sck 1
+set_multicycle_path -setup -start -from [get_clocks -of_objects [get_pins -hierarchical *ext_spi_clk]] -to clk_sck 2
+set_multicycle_path -hold -from [get_clocks -of_objects [get_pins -hierarchical *ext_spi_clk]] -to clk_sck 1
 ## SPI FLASH END ##
 
 #============================= Case Analysis  =========================
@@ -196,29 +187,18 @@ set_multicycle_path -hold -from                  [get_clocks -of_objects [get_pi
 # You must provide all the delay numbers
 # CCLK delay is 0.5, 6.7 ns min/max for K7-2; refer Data sheet
 # Consider the max delay for worst case analysis
-set cclk_delay 6.7
 # Following are the SPI device parameters
 # Max Tco
-set tco_max 7
 # Min Tco
-set tco_min 1
 # Setup time requirement
-set tsu 2
 # Hold time requirement
-set th 3
 # Following are the board/trace delay numbers
 # Assumption is that all Data lines are matched
-set tdata_trace_delay_max 0.25
-set tdata_trace_delay_min 0.25
-set tclk_trace_delay_max 0.2
-set tclk_trace_delay_min 0.2
 ### End of user provided delay numbers
 ## SPI FLASH END ##
 #============================= Disable Timing =========================
 #set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets gtx_clk]
-set_property CLOCK_DEDICATED_ROUTE FALSE [get_pins FDCE_inst/C] 
-set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets ART_1_P]
-set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets ART_1_N]
+set_property CLOCK_DEDICATED_ROUTE FALSE [get_pins FDCE_inst/C]
 #set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets {CLK_40_IBUF}]
 #set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets art_in_i]
 set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets ART_1_P]
@@ -254,7 +234,7 @@ set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets ART_1_N]
 
 #set_property ASYNC_REG true [get_cells readout_vmm/readout_vmm_cont/trigger_pulse_stage1_reg]
 #set_property ASYNC_REG true [get_cells readout_vmm/readout_vmm_cont/trigger_pulse_ff_sync_reg]
-        
+
 #set_property ASYNC_REG true [get_cells readout_vmm/readout_vmm_cont/cktk_max_i_reg[*]]
 #set_property ASYNC_REG true [get_cells readout_vmm/readout_vmm_cont/cktk_max_sync_reg[*]]
 #set_property ASYNC_REG true [get_cells readout_vmm/readout_vmm_cont/reading_out_word_stage1_reg]
@@ -306,13 +286,12 @@ set_property LOC BUFGCTRL_X0Y3 [get_cells ckbc_cktp_generator/CKTP_BUFGMUX]
 set_property ASYNC_REG true [get_cells ckbc_cktp_generator/skewing_module/CKTP_skewed_reg]
 set_property ASYNC_REG true [get_cells ckbc_cktp_generator/skewing_module/cktp_02_reg]
 
-#False paths for skewing pipeline (Caution!! Those lines might not be needed. It should be validated with an oscilloscope) 
+#False paths for skewing pipeline (Caution!! Those lines might not be needed. It should be validated with an oscilloscope)
 set_false_path -from [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg] -to [get_cells ckbc_cktp_generator/skewing_module/CKTP_skewed_reg]
 set_false_path -from [get_cells ckbc_cktp_generator/cktp_generator/vmm_cktp_reg] -to [get_cells ckbc_cktp_generator/skewing_module/cktp_02_reg]
 #set_false_path -from [get_cells ckbc_cktp_generator/skewing_module/cktp_02_reg] -to [get_cells ckbc_cktp_generator/skewing_module/CKTP_skewed_reg]
 
-# Added to disable timing to known artifact of phase skewing 
-set arcs [get_timing_arcs -of_objects \
-[get_cells ckbc_cktp_generator/skewing_module/CKTP_skewed_reg]]
-set_disable_timing $arcs
+# Added to disable timing to known artifact of phase skewing
+set_disable_timing [get_timing_arcs -of_objects [get_cells ckbc_cktp_generator/skewing_module/CKTP_skewed_reg]]
 #============================================================================================
+

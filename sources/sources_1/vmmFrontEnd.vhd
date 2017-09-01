@@ -269,7 +269,7 @@ architecture Behavioral of vmmFrontEnd is
     -- Set to '1' for MMFE8 or '0' for 1-VMM boards
     constant is_mmfe8       : std_logic := '0';
     -- Set to '0' for continuous readout mode or '1' for L0 readout mode
-    constant vmmReadoutMode : std_logic := '1';
+    constant vmmReadoutMode : std_logic := '0';
     -- Set to '1' to enable the ART header
     constant artEnabled     : std_logic := '1';
 
@@ -375,7 +375,8 @@ architecture Behavioral of vmmFrontEnd is
     signal vmm_sdi_vec_obuf   : std_logic_vector(8 downto 1) := (others => '0');
     signal vmm_ckbc_vec       : std_logic_vector(8 downto 1) := (others => '0');
     signal vmm_cktp_vec       : std_logic_vector(8 downto 1) := (others => '0');
-    signal ckart_vec          : std_logic_vector(9 downto 1) := (others => '0');  
+    signal ckart_vec          : std_logic_vector(9 downto 1) := (others => '0');
+    signal vmm_first_rd_done  : std_logic := '0';
     signal conf_di_i          : std_logic := '0';
     signal conf_ena_i         : std_logic := '0';
     signal conf_wen_i         : std_logic := '0';
@@ -407,6 +408,24 @@ architecture Behavioral of vmmFrontEnd is
     signal glbl_fifo_init     : std_logic := '1'; --synced@200Mhz
     signal glbl_fifo_init_s0  : std_logic := '1';
     signal glbl_fifo_init_s1  : std_logic := '1'; --synced@125Mhz
+    
+    signal second_rcv         : std_logic := '0';
+    signal head_wr_done_i     : std_logic := '0';
+    signal vmm_fsm_reset      : std_logic := '0';
+    
+    --Debugging
+    signal reply_st_o_i       : std_logic_vector(3 downto 0) := (others => '0');
+    -------------------------------------------------
+    -- UDP_data_in -- Debugging signals --
+    signal conf_st_o_i           : std_logic_vector(1 downto 0);
+    signal last_o_i              : std_logic;
+    signal valid_o_i             : std_logic;
+    signal data_o_i              : std_logic_vector(7 downto 0);
+    signal command_i             : std_logic_vector(15 downto 0);
+    signal vmm_second_rd_start_i : std_logic;
+    signal vmm_sample_i          : std_logic;
+    signal cnt_bytes_o_i         : std_logic_vector(7 downto 0);
+   
 
     -------------------------------------------------
     -- VMM Signals                   
@@ -1160,9 +1179,7 @@ architecture Behavioral of vmmFrontEnd is
         clk_40              : in  std_logic;
         inhibit_conf        : in  std_logic;
         rst                 : in  std_logic;
---        rst_fifo_init       : in  std_logic;
-        state_o             : out std_logic_vector(2 downto 0);
-        valid_o             : out std_logic;
+        rst_fifo_init       : in  std_logic;
         ------------------------------------
         -------- FPGA Config Interface -----
         latency             : out std_logic_vector(15 downto 0);
@@ -1199,7 +1216,22 @@ architecture Behavioral of vmmFrontEnd is
         vmm_sck             : out std_logic;
         vmm_cs              : out std_logic;
         vmm_cfg_bit         : out std_logic;
+        vmm_first_rd_done   : out std_logic;
+        vmm_second_rd_start : out std_logic;
+        command             : out std_logic_vector(15 downto 0);        
         top_rdy             : in  std_logic;
+        sample_end          : out std_logic;
+        head_wr_done        : in  std_logic;
+        vmm_fsm_reset       : out std_logic;
+        ------------------------------------
+        ------------- Debugging ------------
+        state_o             : out std_logic_vector(2 downto 0); 
+        conf_st_o           : out std_logic_vector(1 downto 0);
+        last_o              : out std_logic;
+        valid_o             : out std_logic;
+        data_o              : out std_logic_vector(7 downto 0);
+        cnt_bytes_o         : out std_logic_vector(7 downto 0);
+        ------------------------------------
         ------------------------------------
         ---------- XADC Interface ----------
         xadc_busy           : in  std_logic;
@@ -1207,23 +1239,34 @@ architecture Behavioral of vmmFrontEnd is
         vmm_id_xadc         : out std_logic_vector(15 downto 0);
         xadc_sample_size    : out std_logic_vector(10 downto 0);
         xadc_delay          : out std_logic_vector(17 downto 0)
+        
     );
     end component;
     -- 14
     component udp_reply_handler
     port(
         ------------------------------------
-        ------- General Interface ----------
-        clk             : in  std_logic;
-        enable          : in  std_logic;
-        serial_number   : in  std_logic_vector(31 downto 0);
-        reply_done      : out std_logic;
-        ------------------------------------
-        ---- FIFO Data Select Interface ----
-        wr_en_conf      : out std_logic;
-        dout_conf       : out std_logic_vector(15 downto 0);
-        packet_len_conf : out std_logic_vector(11 downto 0);
-        end_conf        : out std_logic       
+    ------- General Interface ----------
+    clk             : in  std_logic;
+    enable          : in  std_logic;
+    serial_number   : in  std_logic_vector(31 downto 0);
+    bit_mask        : in  std_logic_vector(7 downto 0);
+    command         : in  std_logic_vector(15 downto 0);
+    vmm_d_in        : in  std_logic;
+    vmm_sck         : in  std_logic;
+    second_rd_start : in  std_logic;
+    sample_end      : in  std_logic;
+    reply_done      : out std_logic;
+    reply_st_o      : out std_logic_vector(3 downto 0);
+    head_wr_done    : out std_logic;
+    second_rcv      : out std_logic;
+    vmm_fsm_reset   : in  std_logic;
+    ------------------------------------
+    ---- FIFO Data Select Interface ----
+    wr_en_conf      : out std_logic;
+    dout_conf       : out std_logic_vector(15 downto 0);
+    packet_len_conf : out std_logic_vector(11 downto 0);
+    end_conf        : out std_logic       
     );
     end component;
     -- 15
@@ -1651,9 +1694,8 @@ udp_din_conf_block: udp_data_in_handler
         clk_40              => clk_40,
         inhibit_conf        => inhibit_conf,
         rst                 => glbl_rst_i,
- --       rst_fifo_init       => glbl_fifo_init_s1,
-        state_o             => conf_state,
-        valid_o             => open,
+        rst_fifo_init       => glbl_fifo_init_s1,
+
         ------------------------------------
         -------- FPGA Config Interface -----
         latency             => latency_conf,
@@ -1690,8 +1732,21 @@ udp_din_conf_block: udp_data_in_handler
         vmm_sck             => vmm_sck_all,
         vmm_cs              => VMM_CS_i,
         vmm_cfg_bit         => vmm_sdi_all,
+        vmm_first_rd_done   => vmm_first_rd_done,
+        vmm_second_rd_start => vmm_second_rd_start_i,
+        command             => command_i,
         top_rdy             => conf_wen_i,
+        sample_end          => vmm_sample_i,
+        head_wr_done        => head_wr_done_i,
+        vmm_fsm_reset       => vmm_fsm_reset,
         ------------------------------------
+        ------------- Debugging ------------
+        state_o             => conf_state,
+        conf_st_o           => conf_st_o_i,
+        last_o              => last_o_i,
+        valid_o             => valid_o_i,
+        data_o              => data_o_i,
+        cnt_bytes_o         => cnt_bytes_o_i,
         ---------- XADC Interface ----------
         xadc_busy           => xadc_busy,
         xadc_rdy            => xadc_conf_rdy,
@@ -1699,6 +1754,8 @@ udp_din_conf_block: udp_data_in_handler
         xadc_sample_size    => xadc_sample_size,
         xadc_delay          => xadc_delay
     );
+    
+   
 
 udp_reply_instance: udp_reply_handler
     port map(
@@ -1707,7 +1764,17 @@ udp_reply_instance: udp_reply_handler
         clk             => userclk2,
         enable          => reply_enable,
         serial_number   => serial_number,
+        bit_mask        => vmm_bitmask_8VMM,
+        command         => command_i,
+        vmm_d_in        => vmm_sdi_all,
+        vmm_sck         => vmm_sck_all,
+        second_rd_start => vmm_second_rd_start_i,
+        sample_end      => vmm_sample_i,
         reply_done      => reply_done,
+        reply_st_o      => reply_st_o_i,
+        head_wr_done    => head_wr_done_i,
+        second_rcv      => second_rcv, 
+        vmm_fsm_reset   => vmm_fsm_reset,
         ------------------------------------
         ---- FIFO Data Select Interface ----
         wr_en_conf      => we_conf_int,
@@ -1715,6 +1782,8 @@ udp_reply_instance: udp_reply_handler
         packet_len_conf => packet_len_conf,
         end_conf        => end_packet_conf_int
     );
+    
+   
 
 mmcm_master: clk_wiz_gen    
     port map (
@@ -2522,6 +2591,7 @@ end process;
     inhibit_conf            <= '0' when (state = IDLE) else '1';
     vmm_bitmask_1VMM        <= "11111111";
     vmm_bitmask             <= vmm_bitmask_8VMM when (is_mmfe8 = '1') else vmm_bitmask_1VMM;
+
     
     pf_newCycle             <= tr_out_i;
     CH_TRIGGER_i            <= not CH_TRIGGER;
@@ -2581,11 +2651,11 @@ end process;
 --        probe5  => flowProbe
 --    );
 
---ila_top: ila_overview
---    port map (
---        clk     => userclk2,
---        probe0  => overviewProbe
---    );
+ila_top: ila_overview
+    port map (
+        clk     => userclk2,
+        probe0  => overviewProbe
+    );
     
 --VIO_DEFAULT_IP: vio_ip
 --      PORT MAP (
@@ -2594,27 +2664,30 @@ end process;
 --        probe_out1  => default_MAC
 --      );
     
---    overviewProbe(3 downto 0)          <= is_state;
---    overviewProbe(8 downto 4)          <= pf_dbg_st;
---    overviewProbe(9)                   <= vmmWordReady_i;
---    overviewProbe(10)                  <= vmmEventDone_i;
---    overviewProbe(11)                  <= daq_enable_i;
---    overviewProbe(12)                  <= pf_trigVmmRo;
---    overviewProbe(14 downto 13)        <= (others => '0');
---    overviewProbe(15)                  <= rd_ena_buff;
---    overviewProbe(19 downto 16)        <= dt_state;
---    overviewProbe(23 downto 20)        <= FIFO2UDP_state;
---    overviewProbe(24)                  <= CKTP_glbl;
---    overviewProbe(25)                  <= UDPDone;
---    overviewProbe(26)                  <= CKBC_glbl;
---    overviewProbe(27)                  <= tr_out_i;
---    overviewProbe(29 downto 28)        <= (others => '0');
---    overviewProbe(30)                  <= level_0;
---    overviewProbe(31)                  <= rst_l0_pf;
---    overviewProbe(47 downto 32)        <= vmmWord_i;
---    overviewProbe(51 downto 48)        <= dt_cntr_st;
---    overviewProbe(59 downto 52)        <= linkHealth_bmsk;
---    overviewProbe(63 downto 60)        <= (others => '0');
+    overviewProbe(3 downto 0)          <= is_state;
+    overviewProbe(19 downto 4)         <= command_i;
+    overviewProbe(20)                  <= vmm_second_rd_start_i;
+    overviewProbe(21)                  <= vmm_sample_i;
+    overviewProbe(24 downto 22)        <= conf_state;
+    overviewProbe(26 downto 25)        <= conf_st_o_i;
+    overviewProbe(27)                  <= last_o_i;
+    overviewProbe(28)                  <= valid_o_i;
+    overviewProbe(36 downto 29)        <= data_o_i;
+    overviewProbe(40 downto 37)        <= reply_st_o_i;
+    overviewProbe(48 downto 41)        <= cnt_bytes_o_i;
+    overviewProbe(49)                  <= vmm_sck_all;
+    overviewProbe(50)                  <= VMM_CS_i;
+    overviewProbe(51)                  <= vmm_conf;
+    overviewProbe(52)                  <= vmm_id_rdy;
+    overviewProbe(53)                  <= reply_done;
+    overviewProbe(54)                  <= vmm_sdi_all;
+    overviewProbe(58 downto 55)        <= FIFO2UDP_state;
+    overviewProbe(59)                  <= end_packet_conf_int;
+    overviewProbe(60)                  <= head_wr_done_i;
+    overviewProbe(61)                  <= UDPDone;
+    overviewProbe(63 downto 62)        <= (others => '0');
+
+    
 
     vmmSignalsProbe(7 downto 0)        <= (others => '0');
     vmmSignalsProbe(15 downto 8)       <= cktk_out_vec;
@@ -2633,7 +2706,8 @@ end process;
     vmmSignalsProbe(42)                <= art2;
     vmmSignalsProbe(43)                <= '0';
     vmmSignalsProbe(44)                <= art_in_vec(1);
-    vmmSignalsProbe(63 downto 45)      <= (others => '0'); 
+    vmmSignalsProbe(45)                <= head_wr_done_i;
+    vmmSignalsProbe(63 downto 46)      <= (others => '0'); 
 
     triggerETRProbe(0)                <= '0';
     triggerETRProbe(1)                <= tren;

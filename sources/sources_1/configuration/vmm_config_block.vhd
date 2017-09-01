@@ -49,6 +49,7 @@ entity vmm_config_block is
     rst                 : in  std_logic;
     rst_ram             : in  std_logic;
     cnt_bytes           : in  unsigned(7 downto 0);
+    fsm_reset           : out std_logic;
     ------------------------------------
     --------- FIFO/UDP Interface -------
     user_din_udp        : in  std_logic_vector(7 downto 0); --prv
@@ -65,7 +66,11 @@ entity vmm_config_block is
     top_rdy             : in  std_logic;
     init_ser            : in  std_logic;
     first_rd_done       : out std_logic;
-    second_rd_start     : out std_logic
+    second_rd_start     : out std_logic;
+    head_wr_done        : in  std_logic;
+    second_rcv          : in std_logic;
+    ------------------------------------
+    conf_st_o           : out std_logic_vector(1 downto 0)
     );
 end vmm_config_block;
 
@@ -93,6 +98,21 @@ architecture RTL of vmm_config_block is
     signal addr_ram_wr      : std_logic_vector (7 downto 0);
     signal ram_ena          : std_logic := '1';
     signal wr_ready         : std_logic := '0';
+    signal wr_ready_0       : std_logic := '0';
+    signal wr_ready_1       : std_logic := '0';
+    signal flag_ready       : std_logic := '0';
+    signal conf_st          : std_logic_vector(1 downto 0) := (others => '0');
+    
+    signal head_wr_done_0   : std_logic := '0';
+    signal head_wr_done_1   : std_logic := '0';
+    
+    signal vmm_sck_i   : std_logic := '0';
+    signal vmm_sck_0   : std_logic := '0';
+    signal vmm_sck_1   : std_logic := '0';
+    
+    signal vmm_cfg_bit_i   : std_logic := '0';
+    signal vmm_cfg_bit_0   : std_logic := '0';
+    signal vmm_cfg_bit_1   : std_logic := '0';
     
     signal clk_count_ctrl   : integer range 0 to 3 := 0;
     signal sck_count        : integer range 0 to 95 := 0;
@@ -105,8 +125,29 @@ architecture RTL of vmm_config_block is
     signal rd_en            : std_logic := '0';
     signal rd_en_i          : std_logic := '0';
     signal times            : integer := 0;
-    signal wait_cnt         : integer range 0 to 101 := 0;
+--    signal wait_cnt         : integer range 0 to 125 := 0;
+    signal second_rcv_0     : std_logic := '0';
+    signal second_rcv_1     : std_logic := '0';
+    
+    attribute ASYNC_REG : string;
+    attribute ASYNC_REG of wr_ready_0    : signal is "TRUE";
+    attribute ASYNC_REG of wr_ready_1    : signal is "TRUE";
+    
+    --attribute ASYNC_REG : string;
+    attribute ASYNC_REG of head_wr_done_0    : signal is "TRUE";
+    attribute ASYNC_REG of head_wr_done_1    : signal is "TRUE";
+    
+    --attribute ASYNC_REG_1 : string;
+    attribute ASYNC_REG of vmm_sck_0    : signal is "TRUE";
+    attribute ASYNC_REG of vmm_sck_1    : signal is "TRUE";
 
+    --attribute ASYNC_REG_2 : string;
+    attribute ASYNC_REG of vmm_cfg_bit_0    : signal is "TRUE";
+    attribute ASYNC_REG of vmm_cfg_bit_1    : signal is "TRUE";
+    
+    --attribute ASYNC_REG_2 : string;
+     attribute ASYNC_REG of second_rcv_0    : signal is "TRUE";
+     attribute ASYNC_REG of second_rcv_1    : signal is "TRUE";
     
     TYPE    ctrlFSM     IS (ST0, ST1, ST2, ST3, ST4);
     SIGNAL  ctrl_state  : ctrlFSM := ST0;
@@ -114,7 +155,25 @@ architecture RTL of vmm_config_block is
     TYPE    confFSM     IS (STIDLE, ST0, ST1, ST2, ST3);
     SIGNAL  conf_state  : confFSM := STIDLE;
     
-
+    attribute mark_debug                        : string;
+    attribute mark_debug of rst                 : signal is "TRUE";
+    attribute mark_debug of rst_ram             : signal is "TRUE";
+    attribute mark_debug of cnt_bytes           : signal is "TRUE";
+    attribute mark_debug of user_din_udp        : signal is "TRUE";
+    attribute mark_debug of user_valid_udp      : signal is "TRUE";
+    attribute mark_debug of user_last_udp       : signal is "TRUE";
+    attribute mark_debug of vmmConf_rdy         : signal is "TRUE";
+    attribute mark_debug of vmmConf_done        : signal is "TRUE";
+    attribute mark_debug of vmm_sck             : signal is "TRUE";
+    attribute mark_debug of vmm_cs              : signal is "TRUE";
+    attribute mark_debug of vmm_cfg_bit         : signal is "TRUE";
+    attribute mark_debug of vmm_conf            : signal is "TRUE";
+    attribute mark_debug of init_ser            : signal is "TRUE";
+    attribute mark_debug of first_rd_done       : signal is "TRUE";
+    attribute mark_debug of second_rd_start     : signal is "TRUE";
+    attribute mark_debug of head_wr_done        : signal is "TRUE";
+    attribute mark_debug of conf_st_o           : signal is "TRUE";
+    
 
 begin
 
@@ -128,8 +187,13 @@ begin
         if(rst = '1')then
             sel_vmm_data    <= '0';
             wr_ready        <= '0';
+            flag_ready      <= '0';
         else
-            if(vmm_conf = '1' and user_last_udp = '0' and user_valid_udp = '1')then
+            if(wr_ready = '1' and flag_ready = '0') then
+                wr_ready <= '1';
+                flag_ready <= '1';
+            elsif(vmm_conf = '1' and user_last_udp = '0' and user_valid_udp = '1')then
+                wr_ready    <= '0';
                 case cnt_bytes is 
                 when "00001000" => --8
                     sel_vmm_data        <= '1'; -- select the correct data at the MUX
@@ -140,6 +204,7 @@ begin
             else
                 wr_ready    <= '0';
                 sel_vmm_data   <= '0';
+                flag_ready      <= '0';
             end if;
         end if;
     end if;
@@ -173,20 +238,24 @@ begin
             conf_state      <= STIDLE;
             first_rd_done   <= '0';
             second_rd_start <= '0';
-            wait_cnt        <=  0;
+            fsm_reset       <= '0';
+            conf_st_o       <= "00";
          else
             case conf_state is
                 when STIDLE =>
-                    if(wr_ready = '1')then  -- changing user_last_udp for vmmConf_rdy
+                    if(init_ser = '1')then  -- changing user_last_udp for vmmConf_rdy
                         conf_state <= ST0;
                     else
                         conf_state <= STIDLE;
                     end if;
                 when ST0 =>
-                    vmmConf_done <= '0';
-                    rd_en_i      <= '1';
-                    conf_state   <= ST1;
+                    vmmConf_done    <= '0';
+                    rd_en_i         <= '1';
+                    second_rd_start <= '0';
+                    conf_state      <= ST1;
+                    conf_st         <= "00";
                 when ST1 =>
+                    conf_st     <= "01";
                     rd_en_i <= '0';
                     if (clk_count_rd = 8) then
                         if (addr_rd_cnt = 1799) then
@@ -201,24 +270,29 @@ begin
                         conf_state   <= ST1;
                     end if;
                 when ST2 =>
+                    conf_st         <= "10";
                     clk_count_rd    <= 0;
                     addr_rd_cnt     <= 72;
                     if (times = 0) then
                         times           <= times + 1;
                         first_rd_done   <= '1';
+                        vmmConf_done    <= '1';
                         conf_state      <= ST3;
                     else
-                        vmmConf_done <= '1';
                         conf_state   <= ST2;
+                        fsm_reset <= '1';
                     end if;
                 when ST3 =>
-                    if (wait_cnt = 100) then
+                    conf_st         <= "11";
+                    if (head_wr_done_1 = '1') then
                         second_rd_start <= '1';
-                        wait_cnt        <= 0;
-                        conf_state      <= ST0;
+                        if (second_rcv = '1') then
+                            conf_state      <= ST0;
+                        end if;
                     else
-                        wait_cnt    <= wait_cnt + 1;
-                        conf_state  <= ST3;
+                        conf_state <= ST3;
+                        second_rd_start <= '0';
+                        
                     end if;
                 when others =>
                     conf_state <= STIDLE;
@@ -228,6 +302,8 @@ begin
 end process;
 
 rd_en <= rd_en_i;
+conf_st_o   <= conf_st;
+
 
 VMM_ctrl_FSM: process(clk_40)
 begin
@@ -235,14 +311,14 @@ if rising_edge(clk_40) then
     if (rst = '1') then
         clk_count_ctrl <= 0;
         sck_count      <= 0;
-        vmm_sck        <= '0';
+        vmm_sck_i      <= '0';
         cs_i           <= '0';
         ctrl_state     <= ST0;
     else
         case ctrl_state is
             when ST0 =>
-                vmm_sck <= '0';
-                cs_i    <= '0';
+                vmm_sck_i <= '0';
+                cs_i      <= '0';
                 if (rd_en = '1') then
                     ctrl_state <= ST1;
                 else
@@ -251,7 +327,7 @@ if rising_edge(clk_40) then
             when ST1 =>
                 if (clk_count_ctrl = 3) then
                     clk_count_ctrl <= 0;
-                    vmm_sck        <= '1';
+                    vmm_sck_i      <= '1';
                     sck_count <= sck_count + 1;
                     if (sck_count = 95) then
                         ctrl_state <= ST2;
@@ -260,11 +336,11 @@ if rising_edge(clk_40) then
                     end if;
                 else
                     clk_count_ctrl <= clk_count_ctrl + 1;
-                    vmm_sck        <= '0';
+                    vmm_sck_i      <= '0';
                     ctrl_state     <= ST1;
                 end if;
             when ST2 =>
-                vmm_sck    <= '0';
+                vmm_sck_i  <= '0';
                 sck_count  <= 0;
                 ctrl_state <= ST3;
             when ST3 =>
@@ -280,7 +356,6 @@ if rising_edge(clk_40) then
     
     end process;
     
-
     
 -- MUX     
 mux_VMM_ctrl_rd : process(addr_ram_wr, cs_i)
@@ -299,6 +374,34 @@ begin
     end if;
 end process;   
 
+--sync flip-flops to save wr_ready
+wr_ready_sync: process(clk_125)
+begin
+    if(rising_edge(clk_125)) then
+        wr_ready_0  <= wr_ready;
+        wr_ready_1  <= wr_ready_0;
+    end if;
+end process;
+
+--sync process for the signal head_wr_done
+head_wr_done_sync: process (clk_125)
+begin
+    if(rising_edge(clk_125)) then
+        head_wr_done_0 <= head_wr_done;
+        head_wr_done_1 <= head_wr_done_0;
+    end if;
+end process;
+
+--sync process for the signal vmm_sck
+vmm_sck_sync: process (clk_125)
+begin
+    if(rising_edge(clk_125)) then
+        vmm_sck_0 <= vmm_sck_i;
+        vmm_sck_1 <= vmm_sck_0;
+    end if;
+end process;
+
+vmm_sck <= vmm_sck_1;
 
 addr_ram_wr <= std_logic_vector(cnt_bytes);
       
@@ -313,10 +416,30 @@ RAM_serializer : vmm_conf_ram
     clkb     =>  clk_40,
     enb      =>  rd_en,
     addrb    =>  addr_ram_rd,
-    doutb(0) =>  vmm_cfg_bit
+    doutb(0) =>  vmm_cfg_bit_i
   );
       
 addr_ram_rd    <=  std_logic_vector(to_unsigned(addr_rd_cnt, addr_ram_rd'length));
+
+--sync process for the signal vmm_cfg_bit
+vmm_cfg_bit_sck: process (clk_40)
+begin
+    if(rising_edge(clk_40)) then
+        vmm_cfg_bit_0 <= vmm_cfg_bit_i;
+        vmm_cfg_bit_1 <= vmm_cfg_bit_0;
+    end if;
+end process;
+
+vmm_cfg_bit <= vmm_cfg_bit_1;
+
+--sync process for the signal vmm_cfg_bit
+second_rcv_sync: process (clk_40)
+begin
+    if(rising_edge(clk_40)) then
+        second_rcv_0 <= second_rcv;
+        second_rcv_1 <= second_rcv_0;
+    end if;
+end process;
 
 
 end RTL;

@@ -52,6 +52,10 @@ entity udp_reply_handler is
         second_rd_start : in  std_logic;
         sample_end      : in  std_logic;
         reply_done      : out std_logic;
+        reply_st_o      : out std_logic_vector(3 downto 0);
+        head_wr_done    : out std_logic;
+        second_rcv      : out std_logic;
+        vmm_fsm_reset   : in  std_logic;   
         ------------------------------------
         ---- FIFO Data Select Interface ----
         wr_en_conf      : out std_logic;
@@ -70,6 +74,13 @@ architecture RTL of udp_reply_handler is
     signal cnt_len       : integer range 0 to 2048       := 0;
     signal buff_vector   : std_logic_vector(15 downto 0) := (others => '0');
     signal buff_bit_cnt  : integer range 0 to 15         := 0;
+    signal reply_st      : std_logic_vector(3 downto 0)  := "0000";
+    signal udp_cnt       : unsigned(11 downto 0 ) := (others => '0');
+    
+    signal vmm_sck_0     : std_logic := '0';
+    signal vmm_sck_1     : std_logic := '0';
+    signal second_rd_0   : std_logic := '0';
+    signal second_rd_1   : std_logic := '0';
 
     type stateType is (ST_IDLE, ST_WAIT_0, ST_WR_HIGH, ST_WR_LOW, ST_WAIT_1, ST_COUNT_AND_DRIVE, ST_DONE, ST_RD_START,ST_DATA,ST_WAIT_2, ST_WAIT_SCK_1);
     signal state : stateType := ST_IDLE;
@@ -85,14 +96,18 @@ begin
             sn_i         <= (others => '0');
             bit_mask_i   <= (others => '0');
             command_i    <= (others => '0');
+            udp_cnt      <= (others => '0');
             cnt_len      <= 0;
             buff_bit_cnt <= 0;
             wr_en_conf   <= '0';
             end_conf     <= '0';
             reply_done   <= '0';
+            head_wr_done <= '0';
+            second_rcv    <= '0';
             state        <= ST_IDLE;
+            reply_st     <= "0000";
         else
-            if(sample_end = '1') then
+         --   if(sample_end = '1') then
                 case state is
     
                 -- sample the serial number and start writing data
@@ -104,39 +119,54 @@ begin
                     reply_done  <= '0';
                     wr_en_conf  <= '0';
                     end_conf    <= '0';
+                    reply_st    <= "0000";
                 
                 -- a wait state   
                 when ST_WAIT_0 =>
-                    state <= ST_WR_HIGH;  
+                    state <= ST_WR_HIGH;
+                    reply_st    <= "0001";  
     
                 -- wr_en FIFO high
                 when ST_WR_HIGH =>
                     wr_en_conf <= '1';
+                    udp_cnt    <= udp_cnt + 1;  
                     state      <= ST_WR_LOW;
+                    reply_st    <= "0010";
     
                 -- wr_en FIFO low
                 when ST_WR_LOW =>
                     wr_en_conf <= '0';
                     state      <= ST_WAIT_1;
+                    reply_st    <= "0011";
                     
                 -- a wait state
                 when ST_WAIT_1 =>
-                    state <= ST_COUNT_AND_DRIVE; 
+                    state <= ST_COUNT_AND_DRIVE;
+                    reply_st    <= "0100"; 
                 
                 --wait for the second reading to start
                 when ST_RD_START =>
-                    if (second_rd_start = '1') then
-                        state <= ST_WAIT_SCK_1;
+                    if (second_rd_1 = '1') then
+                        second_rcv  <= '1';
+                        state       <= ST_WAIT_SCK_1;
                     end if;
+                    reply_st    <= "0101";
                 
                 -- wait for the sck to be asserted
                 when ST_WAIT_SCK_1 =>
-                    if (vmm_sck = '1') then
-                        state <= ST_WAIT_2;
+                    if (vmm_sck_1 = '1') then
+                        state       <= ST_WAIT_2;
+                    elsif(vmm_fsm_reset = '1' )then
+                        end_conf    <= '1';
+                        state       <= ST_DONE;                
                     end if;
+                    reply_st    <= "0110";
                 
                 when ST_WAIT_2 =>
-                    state       <= ST_DATA;
+                    if(vmm_sck_1 = '0') then
+                        state       <= ST_DATA;
+                    end if;
+                    reply_st    <= "0111";
                     
                 --drives the correct data to the buffer    
                 when ST_DATA =>
@@ -144,8 +174,9 @@ begin
                         state        <= ST_WAIT_0;
                     else
                         buff_bit_cnt <= buff_bit_cnt + 1;
-                        state        <= ST_RD_START;
+                        state        <= ST_WAIT_SCK_1;
                     end if;
+                    reply_st    <= "1000";
     
                 -- increment the counter to select a different dout
                 when ST_COUNT_AND_DRIVE =>
@@ -153,19 +184,27 @@ begin
                         --cnt_packet  <= cnt_packet + 1;
                         cnt_len     <= cnt_len + 1;
                         state       <= ST_WAIT_0;
-                    elsif(cnt_len >= 3) and (cnt_len < 108) then
-                            buff_bit_cnt <= 0;
-                            cnt_len      <= cnt_len + 1;
-                            state        <= ST_RD_START;
-                    else
-                        end_conf    <= '1';
-                        state       <= ST_DONE;
+                    elsif(cnt_len = 3) then
+                        head_wr_done   <= '1';
+                        buff_bit_cnt   <= 0;
+                        cnt_len        <= cnt_len + 1;
+                        state          <= ST_RD_START;
+                    elsif(cnt_len > 3)then-- and (cnt_len < 108) then
+                         head_wr_done   <= '0';
+                         buff_bit_cnt   <= 0;
+                         cnt_len        <= cnt_len + 1;
+                         state          <= ST_WAIT_SCK_1;
+                    --else
+                    --    end_conf    <= '1';
+                    --    state       <= ST_DONE;
                     end if;
+                    reply_st    <= "1001";
     
                 -- stay here until reset by flow_fsm
                 when ST_DONE =>
                     reply_done  <= '1';
                     end_conf    <= '0';
+                    reply_st    <= "1010";
     
                 when others =>
                     sn_i         <= (others => '0');
@@ -176,12 +215,16 @@ begin
                     cnt_len      <= 0;
                     end_conf     <= '0';
                     reply_done   <= '0';
+                    second_rcv    <= '0';
                     state        <= ST_IDLE;
+                    reply_st     <= "0000";
                 end case;
-            end if;
+           -- end if;
         end if;
     end if;
 end process;
+
+reply_st_o  <= reply_st;
 
 -- MUX that drives the apporpiate data to the UDP FIFO
 dout_conf_MUX: process(cnt_len, sn_i, bit_mask_i, command_i, buff_vector)
@@ -226,6 +269,25 @@ begin
     end case;
 end process;
 
-    packet_len_conf <= std_logic_vector(to_unsigned(cnt_len, packet_len_conf'length));
+    packet_len_conf <= std_logic_vector(udp_cnt);
+
+-- Syncronsing process for signal vmm_sck    
+sync_proc_sck : process(clk)
+begin
+    if (rising_edge(clk)) then
+        vmm_sck_0 <= vmm_sck;
+        vmm_sck_1 <= vmm_sck_0;
+    end if;
+end process;
+
+-- Syncronsing process for signal second_rd_start    
+sync_proc_second_rd : process(clk)
+begin
+    if (rising_edge(clk)) then
+        second_rd_0 <= second_rd_start;
+        second_rd_1 <= second_rd_0;
+    end if;
+end process;
+
     
 end RTL;
