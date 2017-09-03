@@ -34,9 +34,9 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.all;
---use work.axi.all;
---use work.ipv4_types.all;
---use work.arp_types.all;
+use work.axi.all;
+use work.ipv4_types.all;
+use work.arp_types.all;
 
 entity elink2udp is
 Port(
@@ -103,6 +103,7 @@ end component;
     
     signal packLen_udp  : unsigned(15 downto 0)         := (others => '0');
     signal dout_len     : std_logic_vector(15 downto 0) := (others => '0');
+    constant destIP     : std_logic_vector(31 downto 0) := x"c0a80010";
     
     signal rd_en_len    : std_logic := '0';
     signal wait_udp     : unsigned(1 downto 0) := (others => '0');
@@ -131,7 +132,6 @@ end component;
     attribute ASYNC_REG of rst_rx_i     : signal is "TRUE";
     attribute ASYNC_REG of rst_rx_s     : signal is "TRUE";
     
-    signal debug_wr_fsm  : std_logic_vector(3 downto 0) := (others => '0');
     signal dbg_udp_fsm : std_logic_vector(3 downto 0) := (others => '0');
 
     type stateType_udpFSM is (ST_IDLE, ST_WAIT, ST_START, ST_CHK_RDY, ST_RD_FIFO, ST_DONE);
@@ -238,19 +238,20 @@ begin
         rst_rx_i    <= rst_rx;
         rst_rx_s    <= rst_rx_i;
 
-        udp_txi.hdr.dst_ip_addr     <= destinationIP;         -- set a generic ip adrress (192.168.0.255)
-        udp_txi.hdr.src_port        <= x"19CB";               -- set src and dst ports
+        udp_txi.hdr.dst_ip_addr     <= destIP;
+        udp_txi.hdr.src_port        <= x"19CB";        -- set src and dst ports
         udp_txi.hdr.dst_port        <= x"1778";
         udp_txi.hdr.data_length     <= dout_len;                         
         udp_txi.hdr.checksum        <= x"0000";
-        udp_txi.data.data_out_last  <= data_out_last;
-        udp_txi.data.data_out_valid <= data_out_valid;
-        udp_txi.data.data_out       <= data_out;
+        udp_txi.data.data_out_last  <= dout_last;
+        udp_txi.data.data_out_valid <= dout_valid;
+        udp_txi.data.data_out       <= dout_daq;
         udp_tx_start                <= tx_start_i;
 
-        dout_valid_i       <= rd_en_daq;
-        dout_valid         <= dout_valid_i;
-        dout_last          <= last; 
+        -- delay 'valid' and 'last' signal to sync with data packet
+        dout_valid_i                <= rd_en_daq;
+        dout_valid                  <= dout_valid_i;
+        dout_last                   <= last; 
     end if;
 end process;
 

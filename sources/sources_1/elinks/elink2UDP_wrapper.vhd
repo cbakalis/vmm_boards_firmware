@@ -306,7 +306,7 @@ Port Map(
     ---- UDP Interface --------
     udp_tx_dout_rdy => udp_tx_dout_rdy,
     udp_tx_start    => udp_tx_start,
-    udp_txi         => udp_tx_type
+    udp_txi         => udp_txi
     );
 
 ------------------------

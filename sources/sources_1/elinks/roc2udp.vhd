@@ -71,22 +71,32 @@ architecture RTL of roc2udp is
     --constant ROC_SOP        : std_logic_vector(7 downto 0) := "10011100"; -- K28.4 
     constant ROC_EOP        : std_logic_vector(7 downto 0) := "11011100"; -- K28.6
     
-    signal packLen_cnt  : unsigned(15 downto 0)         := (others => '0');
-    signal wait_cnt     : unsigned(1 downto 0)          := (others => '0');
+    signal packLen_cnt      : unsigned(15 downto 0)         := (others => '0');
+    signal wait_cnt         : unsigned(1 downto 0)          := (others => '0');
     
-    signal hitsLen      : unsigned(9 downto 0)          := (others => '0');
-    signal din_prev     : std_logic_vector(15 downto 0) := (others => '0');
+    signal hitsLen          : unsigned(9 downto 0)          := (others => '0');
+    signal din_prev         : std_logic_vector(15 downto 0) := (others => '0');
     
-    signal dbg_roc_fsm  : std_logic_vector(3 downto 0)  := (others => '0');
+    signal dbg_roc_fsm      : std_logic_vector(3 downto 0)  := (others => '0');
+    
+    signal udp_tx_busy_i    : std_logic := '0';
+    signal udp_tx_busy_s    : std_logic := '0';
+    signal empty_len_i      : std_logic := '0';
+    signal empty_len_s      : std_logic := '0';
 
     type stateType_wrFSM is (ST_IDLE, ST_CHK_SOP, ST_WR_WORD, ST_CHK_FIFO, ST_CHK_WORD, ST_CHK_EOP_0, 
                              ST_CHK_EOP_1, ST_WR_LEN, ST_WAIT, ST_CHK_UDP,  ST_ERROR, ST_DONE);
     signal state_wr         : stateType_wrFSM := ST_IDLE;
     signal state_prv        : stateType_wrFSM := ST_IDLE;
 
-    attribute FSM_ENCODING              : string;
-    attribute FSM_ENCODING of state_wr  : signal is "ONE_HOT";
+    attribute FSM_ENCODING                  : string;
+    attribute FSM_ENCODING of state_wr      : signal is "ONE_HOT";
     
+    attribute ASYNC_REG                     : string;
+    attribute ASYNC_REG of udp_tx_busy_i    : signal is "TRUE";
+    attribute ASYNC_REG of udp_tx_busy_s    : signal is "TRUE";
+    attribute ASYNC_REG of empty_len_i      : signal is "TRUE";
+    attribute ASYNC_REG of empty_len_s      : signal is "TRUE";
 
 begin
 
@@ -251,7 +261,7 @@ begin
                 flush_daq   <= '0';
                 wait_cnt    <= (others => '0');
 
-                if(empty_len = '1' and udp_tx_busy = '0')then
+                if(empty_len_s = '1' and udp_tx_busy_s = '0')then
                     state_wr    <= ST_ERROR;
                 else
                     state_wr    <= ST_CHK_UDP;
@@ -278,6 +288,16 @@ begin
 
             end case;
         end if;
+    end if;
+end process;
+
+syncFIFOsigs_proc: process(clk_elink)
+begin
+    if(rising_edge(clk_elink))then
+        udp_tx_busy_i <=  udp_tx_busy;
+        udp_tx_busy_s <=  udp_tx_busy_i;
+        empty_len_i   <= empty_len;
+        empty_len_s   <= empty_len_i;
     end if;
 end process;
 

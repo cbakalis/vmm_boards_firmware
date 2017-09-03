@@ -186,7 +186,10 @@ set_false_path -from [get_cells DAQ_ELINK/rst_i_tx_reg] -to [get_cells DAQ_ELINK
 set_false_path -from [get_cells DAQ_ELINK/elink_tx_instance/UEF/epathFIFO/U0/inst_fifo_gen/gconvfifo.rf/grf.rf/gntv_or_sync_fifo.gl0.rd/gras.rsts/ram_empty_i_reg] -to [get_cells DAQ_ELINK/DAQ2ELINK_instance/empty_elink_i_reg]
 set_false_path -from [get_cells DAQ_ELINK/elink_tx_instance/UEF/epathFIFO/U0/inst_fifo_gen/gconvfifo.rf/grf.rf/gntv_or_sync_fifo.gl0.rd/gras.rsts/ram_empty_i_reg] -to [get_cells DAQ_ELINK/testing_instance/empty_elink_i_reg]
 set_false_path -from [get_cells DAQ_ELINK/elink2UDP_instance/error_led_i_reg] -to [get_cells DAQ_ELINK/elink2UDP_instance/error_led_s_reg]
-set_false_path -from [get_cells DAQ_ELINK/rst_i_rx_s1_reg] -to [get_cells DAQ_ELINK/elink2UDP_instance/rst_rx_i_reg]
+set_false_path -from [get_cells DAQ_ELINK/rst_i_rx_s1_reg] -to [get_cells DAQ_ELINK/elink2UDP_wrapper_inst/elink2udp_inst/rst_rx_i_reg]
+set_false_path -from [get_cells DAQ_ELINK/elink2UDP_wrapper_inst/elink2udp_inst/udp_tx_busy_reg] -to [get_cells DAQ_ELINK/elink2UDP_wrapper_inst/roc2udp_inst/udp_tx_busy_i_reg]
+set_false_path -from [get_cells DAQ_ELINK/flush_rx_reg] -to [get_cells DAQ_ELINK/elink2UDP_wrapper_inst/elink_filter_inst/flush_rx_i_reg]
+set_false_path -from [get_cells DAQ_ELINK/elink2UDP_wrapper_inst/elink2udp_inst/FIFO_length/U0/inst_fifo_gen/gconvfifo.rf/grf.rf/gntv_or_sync_fifo.gl0.rd/gras.rsts/ram_empty_i_reg] -to [get_cells DAQ_ELINK/elink2UDP_wrapper_inst/roc2udp_inst/empty_len_i_reg]
 
 
 ## SPI FLASH BEGIN ##

@@ -96,6 +96,9 @@ end component;
     signal flag_wr_ack  : std_logic := '0';
     signal buff_done    : std_logic := '0';
     
+    signal flush_rx_i   : std_logic := '0';
+    signal flush_rx_s   : std_logic := '0';
+    
     type stateType_16to48 is (ST_IDLE, ST_CHK, ST_WAIT_FOR_MORE, ST_WRITE_BUFF, ST_DONE, ST_WAIT);
     signal state_prv_16to48     : stateType_16to48 := ST_IDLE; 
     signal state_16to48         : stateType_16to48 := ST_IDLE;
@@ -106,7 +109,11 @@ end component;
     
     attribute FSM_ENCODING                  : string;
     attribute FSM_ENCODING of state_16to48  : signal is "ONE_HOT";
-    attribute FSM_ENCODING of state_48to16  : signal is "ONE_HOT";    
+    attribute FSM_ENCODING of state_48to16  : signal is "ONE_HOT";
+    
+    attribute ASYNC_REG                     : string;
+    attribute ASYNC_REG of flush_rx_i       : signal is "TRUE";
+    attribute ASYNC_REG of flush_rx_s       : signal is "TRUE";
 
 begin
 
@@ -350,10 +357,18 @@ begin
     end if;
 end process;
 
+syncRst: process(clk_elink)
+begin
+    if(rising_edge(clk_elink))then
+        flush_rx_i <= flush_rx;
+        flush_rx_s <= flush_rx_i;    
+    end if;
+end process;
+
 fifo_filter: fifo48to16
   port map(
     clk     => clk_elink,
-    srst    => flush_rx,
+    srst    => flush_rx_s,
     din     => din_fifo_i,
     wr_en   => wr_en_fifo_i,
     rd_en   => rd_en_fifo,
