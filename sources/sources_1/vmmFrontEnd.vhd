@@ -601,6 +601,8 @@ architecture Behavioral of vmmFrontEnd is
     signal test_led             : std_logic := '0';
     signal enable_led_final     : std_logic := '0';
     signal led_out              : std_logic_vector(3 downto 0)  := (others => '0');
+    signal enable_filter        : std_logic := '0';
+    signal enable_roc2udp       : std_logic := '0';
     
     -------------------------------------------------
     -- Flow FSM signals
@@ -1491,6 +1493,8 @@ architecture Behavioral of vmmFrontEnd is
         rst_rx          : in  std_logic;  -- reset the e-link rx sub-component
         swap_tx         : in  std_logic;  -- swap the tx-side bits
         swap_rx         : in  std_logic;  -- swap the rx-side bits
+        enable_filter   : in  std_logic;  -- enables filtering of the e-link data   
+        enable_roc2udp  : in  std_logic;  -- enables module that detects ROC packets
         ttc_detected    : out std_logic;  -- TTC signal detected
         error_led       : out std_logic;  -- rx data flow is too high  
         ---------------------------------
@@ -1533,7 +1537,9 @@ COMPONENT vio_elink
         probe_out0 : out std_logic_vector(0 downto 0);
         probe_out1 : out std_logic_vector(0 downto 0);
         probe_out2 : out std_logic_vector(0 downto 0);
-        probe_out3 : out std_logic_vector(0 downto 0)
+        probe_out3 : out std_logic_vector(0 downto 0);
+        probe_out4 : out std_logic_vector(0 downto 0);
+        probe_out5 : out std_logic_vector(0 downto 0)
       );
     END COMPONENT;
 
@@ -2237,6 +2243,8 @@ DAQ_ELINK: elink_wrapper
         rst_rx          => rst_elink_rx,    -- from VIO
         swap_tx         =>  '0',
         swap_rx         => swap_rx,         -- from VIO
+        enable_filter   => enable_filter,
+        enable_roc2udp  => enable_roc2udp,
         ttc_detected    => open,
         error_led       => enable_led,
         ---------------------------------
@@ -2278,7 +2286,9 @@ vio_elink_instance: vio_elink
         probe_out0(0)   => test_led,
         probe_out1(0)   => rst_elink_glbl,
         probe_out2(0)   => rst_elink_mmcm,
-        probe_out3(0)   => swap_rx
+        probe_out3(0)   => swap_rx,
+        probe_out4(0)   => enable_filter,
+        probe_out5(0)   => enable_roc2udp
    );
 
 --    clk => clk,

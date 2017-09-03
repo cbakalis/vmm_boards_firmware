@@ -32,6 +32,8 @@
 -- 05.07.2017 Updated the module. E-link MMCM is now external and link speed can 
 -- go up to 320 Mbps. Also added a TTC auxiliary module. (Christos Bakalis)
 -- 24.08.2017 Updated the module to comply with the ROC e-link format. (Christos Bakalis)
+-- 03.09.2017 Added elink2udp_wrapper which receives data from the e-link and forwards 
+-- them via UDP. This module supports ROC format. (Christos Bakalis)
 --
 -----------------------------------------------------------------------------------------
 library IEEE;
@@ -56,6 +58,8 @@ port(
     rst_rx          : in  std_logic;  -- reset the e-link rx sub-component
     swap_tx         : in  std_logic;  -- swap the tx-side bits
     swap_rx         : in  std_logic;  -- swap the rx-side bits
+    enable_filter   : in  std_logic;
+    enable_roc2udp  : in  std_logic;
     ttc_detected    : out std_logic;  -- TTC signal detected
     error_led       : out std_logic;  -- rx data flow is too high
     ---------------------------------
@@ -198,14 +202,17 @@ port (
     );
 end component;
 
-component elink2UDP
+component elink2UDP_wrapper
 port(
-        ---------------------------
+    ---------------------------
     ---- General Interface ----
     clk_elink       : in  std_logic;
     clk_udp         : in  std_logic;
     rst_rx          : in  std_logic;
-    error_led       : out std_logic; -- indicating the data flow is too high
+    flush_rx        : in  std_logic;
+    enable_filter   : in  std_logic;
+    enable_roc2udp  : in  std_logic;
+    error_led       : out std_logic;
     ---------------------------
     ---- Elink Interface ------
     empty_elink     : in  std_logic;
@@ -377,19 +384,22 @@ port map(
     ------
     );
 
-elink2UDP_instance: elink2UDP
+elink2UDP_wrapper_inst: elink2UDP_wrapper
 port map(
     ---------------------------
     ---- General Interface ----
     clk_elink       => clk_160,
     clk_udp         => user_clock,
     rst_rx          => rst_i_rx_s1,
-    error_led       => error_led, -- indicating the data flow is too high
+    flush_rx        => flush_rx,
+    enable_filter   => enable_filter,
+    enable_roc2udp  => enable_roc2udp,
+    error_led       => error_led,
     ---------------------------
     ---- Elink Interface ------
     empty_elink     => empty_elink_rx,
-    full_elink      => fifo_full_rx,
     half_full_elink => half_full_rx,
+    full_elink      => fifo_full_rx,
     rd_en_elink     => rd_ena,
     din_elink       => dout_elink2fifo_inv,
     ---------------------------

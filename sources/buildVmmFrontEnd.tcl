@@ -229,7 +229,11 @@ set files [list \
  "[file normalize "$origin_dir/sources_1/elinks/reg8to16bit.vhd"]"\
  "[file normalize "$origin_dir/sources_1/elinks/SCDataMANAGER.vhd"]"\
  "[file normalize "$origin_dir/sources_1/elinks/upstreamEpathFifoWrap.vhd"]"\
- "[file normalize "$origin_dir/sources_1/elinks/elink2UDP.vhd"]"\
+ "[file normalize "$origin_dir/sources_1/elinks/elink2UDP_wrapper.vhd"]"\
+ "[file normalize "$origin_dir/sources_1/elinks/roc2udp.vhd"]"\
+ "[file normalize "$origin_dir/sources_1/elinks/elink2udp.vhd"]"\
+ "[file normalize "$origin_dir/sources_1/elinks/simple_mode.vhd"]"\
+ "[file normalize "$origin_dir/sources_1/elinks/elink_filter.vhd"]"\
  "[file normalize "$origin_dir/sources_1/ip/ila_0_1.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/ila_user_FIFO.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/ila_pf.xcix"]"\
@@ -259,6 +263,7 @@ set files [list \
  "[file normalize "$origin_dir/sources_1/ip/hdlc_bist_fifo.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/elink2UDP_daq.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/elink2UDP_len.xcix"]"\
+ "[file normalize "$origin_dir/sources_1/ip/fifo48to16.xcix"]"\
  "[file normalize "$origin_dir/sources_1/readout/event_timing_reset.vhd"]"\
  "[file normalize "$origin_dir/sources_1/readout/select_data.vhd"]"\
  "[file normalize "$origin_dir/sources_1/readout/vmmSignalsDemux.vhd"]"\
@@ -828,7 +833,27 @@ set file [file normalize $file]
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property "file_type" "VHDL" $file_obj
 
-set file "$origin_dir/sources_1/elinks/elink2UDP.vhd"
+set file "$origin_dir/sources_1/elinks/elink2UDP_wrapper.vhd"
+set file [file normalize $file]
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property "file_type" "VHDL" $file_obj
+
+set file "$origin_dir/sources_1/elinks/elink2udp.vhd"
+set file [file normalize $file]
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property "file_type" "VHDL" $file_obj
+
+set file "$origin_dir/sources_1/elinks/elink_filter.vhd"
+set file [file normalize $file]
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property "file_type" "VHDL" $file_obj
+
+set file "$origin_dir/sources_1/elinks/roc2udp.vhd"
+set file [file normalize $file]
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property "file_type" "VHDL" $file_obj
+
+set file "$origin_dir/sources_1/elinks/simple_mode.vhd"
 set file [file normalize $file]
 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
 set_property "file_type" "VHDL" $file_obj
