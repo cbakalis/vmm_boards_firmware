@@ -78,6 +78,7 @@ Port(
     clk_elink    : in  std_logic;
     rst_rx       : in  std_logic;
     flush_rx     : in  std_logic;
+    dbg_filter_o : out std_logic_vector(2 downto 0);
     ---------------------------
     ---- Elink Interface ------
     empty_elink  : in  std_logic;
@@ -93,11 +94,13 @@ Port(
 end component;
 
 component roc2udp
+Generic (real_roc : std_logic); -- set to '1' if the real ROC is sending data
 Port(
     ---------------------------
     ---- General Interface ----
     clk_elink   : in  std_logic;
     rst_rx      : in  std_logic;
+    fsm_roc_o   : out std_logic_vector(3 downto 0);
     ---------------------------
     -- Elink/Filter Interface -
     empty_fifo  : in  std_logic;
@@ -146,6 +149,7 @@ Port(
     rst_rx          : in  std_logic;
     rst_rx_125      : out std_logic;
     flush_rx        : in  std_logic;
+    dbg_udp_o       : out std_logic_vector(3 downto 0);
     ---------------------------
     ---- roc2udp Interface ----
     flush_daq       : in  std_logic;
@@ -164,6 +168,14 @@ Port(
     udp_txi         : out udp_tx_type
     );
 end component;
+
+COMPONENT ila_rx
+
+PORT (
+    clk    : IN STD_LOGIC;
+    probe0 : IN STD_LOGIC_VECTOR(31 DOWNTO 0)
+);
+END COMPONENT  ;
 
     signal rst_rx_filter        : std_logic := '0';
     signal rd_en_elink_filter   : std_logic := '0';
@@ -201,6 +213,11 @@ end component;
     signal wr_en_daq            : std_logic := '0';
     signal din_daq              : std_logic_vector(15 downto 0) := (others => '0');
     signal din_len              : std_logic_vector(15 downto 0) := (others => '0');
+    
+    signal filter_full          : std_logic := '0';
+    signal dbg_fsm_filter       : std_logic_vector(2 downto 0) := (others => '0');
+    signal dbg_fsm_roc          : std_logic_vector(3 downto 0) := (others => '0');
+    signal dbg_fsm_udp          : std_logic_vector(3 downto 0) := (others => '0');
 
     signal error_latched        : std_logic := '0';
     signal error_i              : std_logic := '0';
@@ -210,7 +227,20 @@ end component;
     attribute ASYNC_REG of error_i  : signal is "TRUE";
     attribute ASYNC_REG of error_s  : signal is "TRUE";
     
-
+--    attribute mark_debug                    : string;
+--    attribute mark_debug of full_daq        : signal is "TRUE";
+--    attribute mark_debug of full_len        : signal is "TRUE";
+--    attribute mark_debug of full_elink      : signal is "TRUE";
+--    attribute mark_debug of filter_full     : signal is "TRUE";
+--    attribute mark_debug of dbg_fsm_filter  : signal is "TRUE";
+--    attribute mark_debug of dbg_fsm_roc     : signal is "TRUE";
+--    attribute mark_debug of dbg_fsm_udp     : signal is "TRUE";
+--    attribute mark_debug of flush_daq       : signal is "TRUE";
+--    attribute mark_debug of wr_en_len       : signal is "TRUE";
+--    attribute mark_debug of wr_en_daq       : signal is "TRUE";
+--    attribute mark_debug of empty_len       : signal is "TRUE";
+--    attribute mark_debug of rd_en_roc       : signal is "TRUE";
+        
 begin
 
 elink_filter_inst: elink_filter
@@ -220,6 +250,7 @@ Port Map(
     clk_elink    => clk_elink,
     rst_rx       => rst_rx_filter,
     flush_rx     => flush_rx,
+    dbg_filter_o => dbg_fsm_filter,
     ---------------------------
     ---- Elink Interface ------
     empty_elink  => empty_elink,
@@ -236,11 +267,13 @@ Port Map(
     rst_rx_filter <= rst_rx or not enable_filter;
 
 roc2udp_inst: roc2udp
+Generic Map(real_roc => '0') -- set to zero if receiving data from NTUA/BNL firmware
 Port Map(
     ---------------------------
     ---- General Interface ----
     clk_elink   => clk_elink,
     rst_rx      => rst_roc2udp,
+    fsm_roc_o   => dbg_fsm_roc,
     ---------------------------
     -- Elink/Filter Interface -
     empty_fifo  => empty_roc,   -- from filter or elink
@@ -291,6 +324,7 @@ Port Map(
     rst_rx      => rst_rx,
     rst_rx_125  => rst_rx_125,
     flush_rx    => flush_rx,
+    dbg_udp_o   => dbg_fsm_udp,
     ---------------------------
     ---- roc2udp Interface ----
     flush_daq   => flush_daq,
@@ -352,7 +386,7 @@ begin
     if(rising_edge(clk_udp))then
         if(rst_rx_125 = '1')then
             error_latched   <= '0';
-            error_led       <= '1';
+            error_led       <= '0';
         else
             case error_latched is
             when '0'    => if(error_s = '1')then error_latched <= '1'; else error_latched <= '0'; end if;
@@ -366,5 +400,25 @@ begin
         error_s <= error_i;
     end if;
 end process;
+
+    filter_full <= full_filter and enable_filter;
+
+--ila_rx_inst: ila_rx
+--PORT MAP (
+--  clk                    => clk_elink,
+--  probe0(0)              => full_daq,
+--  probe0(1)              => full_len,
+--  probe0(2)              => full_elink,
+--  probe0(3)              => filter_full,
+--  probe0(6 downto 4)     => dbg_fsm_filter,
+--  probe0(10 downto 7)    => dbg_fsm_roc,
+--  probe0(14 downto 11)   => dbg_fsm_udp,
+--  probe0(15)             => flush_daq,
+--  probe0(16)             => wr_en_len,
+--  probe0(17)             => wr_en_daq,
+--  probe0(18)             => empty_len,
+--  probe0(19)             => rd_en_roc,
+--  probe0(31 downto 20) => (others => '0')
+--);
 
 end RTL;

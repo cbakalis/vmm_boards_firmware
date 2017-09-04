@@ -601,8 +601,8 @@ architecture Behavioral of vmmFrontEnd is
     signal test_led             : std_logic := '0';
     signal enable_led_final     : std_logic := '0';
     signal led_out              : std_logic_vector(3 downto 0)  := (others => '0');
-    signal enable_filter        : std_logic := '0';
-    signal enable_roc2udp       : std_logic := '0';
+    signal enable_filter        : std_logic := '1'; -- high by default
+    signal enable_roc2udp       : std_logic := '1'; -- high by default
     
     -------------------------------------------------
     -- Flow FSM signals

@@ -41,11 +41,13 @@ use IEEE.NUMERIC_STD.all;
 --use work.arp_types.all;
 
 entity roc2udp is
+Generic (real_roc : std_logic);
 Port(
     ---------------------------
     ---- General Interface ----
     clk_elink   : in  std_logic;
     rst_rx      : in  std_logic;
+    fsm_roc_o   : out std_logic_vector(3 downto 0);
     ---------------------------
     -- Elink/Filter Interface -
     empty_fifo  : in  std_logic;
@@ -133,10 +135,10 @@ begin
                     state_wr    <= ST_IDLE;
                 end if;
 
-            -- is this the ROC_SOP?
+            -- is this the ROC_SOP? (1st byte is always ROC_SOP and T is always zero)
             when ST_CHK_SOP =>
                 dbg_roc_fsm     <= "0010";
-                if(din_fifo(15 downto 8) = ROC_SOP)then
+                if(din_fifo(15 downto 8) = ROC_SOP and din_fifo(7) = '0')then
                     state_wr    <= ST_WR_WORD;
                 else -- not a ROC packet, back to idle
                     state_wr    <= ST_IDLE;
@@ -147,9 +149,9 @@ begin
                 dbg_roc_fsm <= "0011";
                 din_prev    <= din_fifo;
                 
-                if(packLen_cnt = 2060)then
+                if(packLen_cnt >= 2060)then
                     wr_en_daq   <= '0';
-                    state_wr    <= ST_CHK_UDP;      
+                    state_wr    <= ST_CHK_UDP; -- error!      
                 elsif(state_prv = ST_CHK_EOP_1)then
                     wr_en_daq   <= '0'; -- no need to write
                     packLen_cnt <= packLen_cnt;
@@ -183,7 +185,11 @@ begin
             -- check the word
             when ST_CHK_WORD =>
                 dbg_roc_fsm     <= "0101";
-                if(din_fifo(7 downto 0) = ROC_EOP)then
+                if(real_roc = '0' and packLen_cnt = 2 and din_fifo(7 downto 0) /= x"00")then
+                    state_wr    <= ST_CHK_UDP; -- ERROR: that was not the real SOP, since the FPGA uses only the 8 LSB of the event_counter
+                elsif(real_roc = '0' and din_fifo (15 downto 8) = x"00" and din_fifo(7 downto 0) = ROC_EOP)then -- probably ROC trailer from FPGA (no checksum)
+                    state_wr    <= ST_CHK_EOP_0;
+                elsif(real_roc = '1' and din_fifo(7 downto 0) = ROC_EOP)then -- that was the EOP (add checksum check?)
                     state_wr    <= ST_CHK_EOP_0;
                 else
                     state_wr    <= ST_WR_WORD; -- not EOP, but still a packet...
@@ -231,7 +237,7 @@ begin
 
             -- back to IDLE
             when ST_DONE =>
-                dbg_roc_fsm <= "1001";
+                dbg_roc_fsm <= "1010";
                 wr_en_len   <= '0';
                 state_wr    <= ST_IDLE;
 
@@ -250,7 +256,7 @@ begin
                     state_wr    <= ST_WAIT;
                 end if;
 
-            -- wrote too many packets. either detected fake SOP, or missed real EOP.
+            -- wrote too many packets, or either detected fake SOP, or missed real EOP.
             -- wait for the elink2udp to finish sending, flush, and jump back to IDLE
             when ST_CHK_UDP =>
                 dbg_roc_fsm <= "1111";
@@ -282,6 +288,7 @@ begin
                 wr_en_len   <= '0';
                 wr_en_daq   <= '0';
                 rd_en_fifo  <= '0';
+                flush_daq   <= '0';
                 dbg_roc_fsm <= (others => '0');
                 wait_cnt    <= (others => '0');
                 state_wr    <= ST_IDLE;
@@ -304,5 +311,6 @@ end process;
     hitsLen     <= unsigned(din_prev(9 downto 0));
     dout_len    <= std_logic_vector(packLen_cnt);
     dout_daq    <= din_fifo;
+    fsm_roc_o   <= dbg_roc_fsm;
 
 end RTL;

@@ -47,6 +47,7 @@ Port(
     rst_rx          : in  std_logic;
     rst_rx_125      : out std_logic;
     flush_rx        : in  std_logic;
+    dbg_udp_o       : out std_logic_vector(3 downto 0);
     ---------------------------
     ---- roc2udp Interface ----
     flush_daq       : in  std_logic;
@@ -289,5 +290,6 @@ FIFO_length: elink2UDP_len
    );
    
    empty_len <= empty_len_i;
+   dbg_udp_o <= dbg_udp_fsm;
 
 end RTL;

@@ -43,6 +43,7 @@ Port(
     clk_elink    : in  std_logic;
     rst_rx       : in  std_logic;
     flush_rx     : in  std_logic;
+    dbg_filter_o : out std_logic_vector(2 downto 0);
     ---------------------------
     ---- Elink Interface ------
     empty_elink  : in  std_logic;
@@ -98,6 +99,7 @@ end component;
     
     signal flush_rx_i   : std_logic := '0';
     signal flush_rx_s   : std_logic := '0';
+    signal dbg_filter   : std_logic_vector(2 downto 0);
     
     type stateType_16to48 is (ST_IDLE, ST_CHK, ST_WAIT_FOR_MORE, ST_WRITE_BUFF, ST_DONE, ST_WAIT);
     signal state_prv_16to48     : stateType_16to48 := ST_IDLE; 
@@ -128,12 +130,14 @@ begin
             rd_en_elink     <= '0';
             buff_done       <= '0';
             wait_cnt0       <= (others => '0');
+            dbg_filter      <= (others => '0');
             state_16to48    <= ST_IDLE;
         else
             case state_16to48 is
 
             -- is the elink empty?
             when ST_IDLE =>
+                dbg_filter          <= "000";
                 wr_en_buff          <= '0';   
                 wr_en_fifo          <= '0';
                 sel_48to16          <= '0';
@@ -149,6 +153,7 @@ begin
 
             -- check the word
             when ST_CHK =>
+                dbg_filter          <= "001";
                  -- possibility that this is the header.
                  -- fill the buffer and check. grant FIFO
                  -- control to other process
@@ -166,6 +171,7 @@ begin
 
             -- stay here for more potential header data
             when ST_WAIT_FOR_MORE =>
+                dbg_filter          <= "010";
                 wr_en_buff          <= '0';
                 state_prv_16to48    <= ST_WAIT_FOR_MORE;
                 if(empty_elink = '0')then
@@ -178,6 +184,7 @@ begin
 
             -- write to the buffer. the third writing will be the last
             when ST_WRITE_BUFF =>
+                dbg_filter          <= "011";
                 wr_en_buff          <= '1';
                 buff_done           <= '1';
                 state_prv_16to48    <= ST_WRITE_BUFF;
@@ -189,6 +196,7 @@ begin
 
             -- stay here until the others process finishes writing
             when ST_DONE =>
+                dbg_filter       <= "100";
                 if(empty_buff = '1' and wr2fifo_busy = '0')then
                     state_16to48 <= ST_IDLE;
                 else
@@ -197,6 +205,7 @@ begin
 
             -- generic state that waits
             when ST_WAIT =>
+                dbg_filter      <= "111";
                 wr_en_buff      <= '0';
                 rd_en_elink     <= '0';
                 wr_en_fifo      <= '0';
@@ -376,5 +385,7 @@ fifo_filter: fifo48to16
     full    => full_fifo,
     empty   => empty_fifo
   );
+
+    dbg_filter_o <= dbg_filter;
 
 end RTL;
