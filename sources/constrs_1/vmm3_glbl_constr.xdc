@@ -185,6 +185,7 @@ set_false_path -from [get_cells DAQ_ELINK/rst_i_rx_reg] -to [get_cells DAQ_ELINK
 set_false_path -from [get_cells DAQ_ELINK/rst_i_tx_reg] -to [get_cells DAQ_ELINK/rst_i_tx_s0_reg]
 set_false_path -from [get_cells DAQ_ELINK/elink_tx_instance/UEF/epathFIFO/U0/inst_fifo_gen/gconvfifo.rf/grf.rf/gntv_or_sync_fifo.gl0.rd/gras.rsts/ram_empty_i_reg] -to [get_cells DAQ_ELINK/DAQ2ELINK_instance/empty_elink_i_reg]
 set_false_path -from [get_cells DAQ_ELINK/elink_tx_instance/UEF/epathFIFO/U0/inst_fifo_gen/gconvfifo.rf/grf.rf/gntv_or_sync_fifo.gl0.rd/gras.rsts/ram_empty_i_reg] -to [get_cells DAQ_ELINK/testing_instance/empty_elink_i_reg]
+set_false_path -from [get_cells DAQ_ELINK/elink_tx_instance/UEF/epathFIFO/U0/inst_fifo_gen/gconvfifo.rf/grf.rf/gntv_or_sync_fifo.gl0.wr/gwas.wsts/ram_full_i_reg] -to [get_cells error_led_out_reg]
 
 
 ## SPI FLASH BEGIN ##
