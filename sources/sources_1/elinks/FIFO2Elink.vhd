@@ -30,6 +30,7 @@ port (
     efifoDin    : in  std_logic_vector (17 downto 0);   -- [data_code,2bit][data,16bit]
     efifoWe     : in  std_logic;
     efifoPfull  : out std_logic;
+    fifo_full   : out std_logic;
     efifoEmpty  : out std_logic; 
     efifoWclk   : in  std_logic; 
     ------
@@ -74,7 +75,7 @@ port map(
     dout 	=> efifoDout,
     doutRdy => doutRdy,
     ---
-    full        => open,
+    full        => fifo_full,
     empty       => efifoEmpty,
     prog_full   => efifoPfull
     );

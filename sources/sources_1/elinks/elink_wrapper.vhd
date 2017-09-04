@@ -55,6 +55,9 @@ port(
     ttc_detected    : out std_logic;  -- TTC signal detected
     timeout_ena     : in  std_logic;  -- wait before asserting elink done
     timeout_limit   : in  std_logic_vector(15 downto 0); -- how much to wait?
+    number_of_pack  : in  std_logic_vector(9 downto 0);
+    error_led       : out std_logic;
+    adapter_active  : out std_logic;
     ---------------------------------
     -------- E-link clocking --------
     clk_40          : in  std_logic;
@@ -89,6 +92,7 @@ component elink_daq_tester
     clk_in          : in  std_logic; 
     rst             : in  std_logic;
     tester_ena      : in  std_logic;
+    number_of_pack  : in  std_logic_vector(9 downto 0);
     ------------------------------
     ------ elink interface -------
     empty_elink     : in  std_logic;
@@ -106,6 +110,7 @@ component elink_daq_driver
     driver_ena      : in  std_logic;
     use_timeout     : in  std_logic;
     timeout_limit   : in  std_logic_vector(15 downto 0);
+    adapter_active  : out std_logic;
     ---------------------------
     ------- pf interface ------
     din_daq         : in  std_logic_vector(15 downto 0);
@@ -121,6 +126,8 @@ component elink_daq_driver
     ------ elink inteface -----
     empty_elink     : in  std_logic;
     wr_en_elink     : out std_logic;
+    full_elink      : in  std_logic;
+    hf_elink        : in  std_logic;
     dout_elink      : out std_logic_vector(17 downto 0)
     );
 end component;
@@ -143,6 +150,7 @@ port (
     efifoWe     : in  std_logic;
     efifoPfull  : out std_logic;
     efifoEmpty  : out std_logic;
+    fifo_full   : out std_logic;
     efifoWclk   : in  std_logic; 
     ------
     DATA1bitOUT : out std_logic; -- serialized output
@@ -183,6 +191,14 @@ port (
     ------
     );
 end component;
+
+component ila_elink_2
+
+port (
+    clk    : in std_logic;
+    probe0 : in std_logic_vector(18 DOWNTO 0)
+);
+end component;
     
     signal rst_i_tx             : std_logic := '1';
     signal rst_i_tx_s0          : std_logic := '1';
@@ -215,6 +231,7 @@ end component;
     signal driver_ena           : std_logic := '0';
     signal rd_ena               : std_logic := '0';
     signal tester_ena           : std_logic := '0'; 
+    signal hafFull_elink_tx     : std_logic := '0';
     
     attribute mark_debug        : string;
     attribute dont_touch        : string;
@@ -226,9 +243,9 @@ end component;
     attribute ASYNC_REG of rst_i_rx_s1    : signal is "true";
     
     -- debugging
-    attribute mark_debug of dout_elink2fifo_inv     : signal is "true";
-    attribute dont_touch of dout_elink2fifo_inv     : signal is "true";
-    attribute mark_debug of rd_ena                  : signal is "true";
+--    attribute mark_debug of dout_elink2fifo_inv     : signal is "true";
+--    attribute dont_touch of dout_elink2fifo_inv     : signal is "true";
+--    attribute mark_debug of rd_ena                  : signal is "true";
     
 --    attribute mark_debug of empty_elink_tx      : signal is "true";
 --    attribute mark_debug of empty_elink_rx      : signal is "true";
@@ -249,6 +266,7 @@ port map(
     clk_in          => user_clock, -- must be the same with efifoWclk of FIFO2ELINK
     rst             => rst_i_tx,
     tester_ena      => tester_ena,
+    number_of_pack  => number_of_pack,
     ------------------------------
     ------ elink interface -------
     empty_elink     => empty_elink_tx,
@@ -265,6 +283,7 @@ port map(
     driver_ena      => driver_ena,
     use_timeout     => timeout_ena,
     timeout_limit   => timeout_limit,
+    adapter_active  => adapter_active,
     ---------------------------
     ------- pf interface ------
     din_daq         => din_daq,
@@ -278,6 +297,8 @@ port map(
     elink_done      => elink_done,
     ---------------------------
     ------ elink inteface -----
+    full_elink     => full_elink_tx,
+    hf_elink       => hafFull_elink_tx,
     empty_elink     => empty_elink_tx,
     wr_en_elink     => wr_en_elink_daq,
     dout_elink      => data_elink_daq
@@ -297,8 +318,9 @@ port map(
     ------   
     efifoDin        => data_elink_tx,
     efifoWe         => wr_en_elink_tx,
-    efifoPfull      => full_elink_tx,
+    efifoPfull      => hafFull_elink_tx,
     efifoEmpty      => empty_elink_tx,
+    fifo_full       => full_elink_tx,
     efifoWclk       => user_clock, -- must be the same with clk_in of tester and driver
     ------
     DATA1bitOUT     => elink_tx_i,
@@ -497,5 +519,13 @@ end process;
   
   sel_din(1)        <= pattern_ena;
   sel_din(0)        <= daq_ena;
+  error_led         <= full_elink_tx;
+  
+--ila_tx_elink: ila_elink_2
+--  port map (
+--      clk                 => user_clock,
+--      probe0(17 downto 0) => data_elink_tx,
+--      probe0(18)          => wr_en_elink_tx
+--  );
     
 end RTL;

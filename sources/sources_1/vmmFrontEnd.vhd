@@ -268,6 +268,10 @@ entity vmmFrontEnd is
         
         -- E-link MMCM locked LED
         LED_LOCKED            : OUT   STD_LOGIC;
+        -- E-link TX FIFO is full
+        LED_ERROR             : OUT   STD_LOGIC;
+        -- E-link is sending data(blinking)
+        LED_SENDING           : OUT   STD_LOGIC;  
         
         -- AXI4SPI Flash Configuration
         ---------------------------------------
@@ -608,6 +612,14 @@ architecture Behavioral of vmmFrontEnd is
     signal start_null           : std_logic := '0';
     signal start_pack           : std_logic := '0';
     signal elink_done           : std_logic := '0';
+    signal error_led            : std_logic := '0';
+    signal error_led_out        : std_logic := '0';
+    signal number_of_pack       : std_logic_vector(9 downto 0) := (others => '0');
+    signal adapter_active       : std_logic := '0';
+    signal rst_cnt              : std_logic := '0';
+    signal start_cnt            : std_logic := '0';
+    signal wait_cnt_adapt       : unsigned(24 downto 0) := (others => '0');
+    signal adapter_active          : std_logic := '0';
 
     -------------------------------------------------
     -- Flow FSM signals
@@ -795,7 +807,7 @@ architecture Behavioral of vmmFrontEnd is
 --    attribute mark_debug of vmmWordReady_i            : signal is "TRUE";
 --    attribute mark_debug of vmmEventDone_i            : signal is "TRUE";
 --    attribute mark_debug of dt_state                  : signal is "TRUE";
---    attribute mark_debug of daq_data_out_i            : signal is "TRUE";
+--    attribute mark_debug of trigger_cnt               : signal is "TRUE";
 --    attribute mark_debug of daq_enable_i              : signal is "TRUE";
 --    attribute mark_debug of start_null                : signal is "TRUE";
 --    attribute mark_debug of elink_done                : signal is "TRUE";
@@ -1509,6 +1521,9 @@ architecture Behavioral of vmmFrontEnd is
         ttc_detected    : out std_logic;  -- TTC signal detected
         timeout_ena     : in  std_logic;  -- wait before asserting elink done
         timeout_limit   : in  std_logic_vector(15 downto 0); -- how much to wait?
+        error_led       : out std_logic;
+        number_of_pack  : in  std_logic_vector(9 downto 0);
+        adapter_active  : out std_logic;
         ---------------------------------
         -------- E-link clocking --------
         clk_40          : in  std_logic;
@@ -1548,7 +1563,8 @@ COMPONENT vio_elink
         probe_out7 : out std_logic_vector(0 downto 0);
         probe_out8 : out std_logic_vector(0 downto 0);
         probe_out9 : out std_logic_vector(0 downto 0);
-        probe_out10 : out std_logic_vector(15 downto 0)
+        probe_out10 : out std_logic_vector(15 downto 0);
+        probe_out11 : out std_logic_vector(9 downto 0)
       );
     END COMPONENT;
 
@@ -2250,6 +2266,9 @@ DAQ_ELINK: elink_wrapper
         ttc_detected    => open,
         timeout_ena     => timeout_ena,
         timeout_limit   => timeout_limit,
+        error_led       => error_led,
+        number_of_pack  => number_of_pack,
+        adapter_active  => adapter_active,
         ---------------------------------
         -------- E-link clocking --------
         clk_40          => clk_40,
@@ -2288,7 +2307,8 @@ vio_elink_instance: vio_elink
         probe_out7(0)   => swap_rx,
         probe_out8(0)   => swap_tx,
         probe_out9(0)   => timeout_ena,
-        probe_out10     => timeout_limit
+        probe_out10     => timeout_limit,
+        probe_out11     => number_of_pack
    );
 
 --    clk => clk,
@@ -2314,6 +2334,8 @@ elink_rx_daq_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT", IBUF_LOW_PWR => 
 ------------------------------------------------------------------------------------------------------------------
 
 led_obuf:        OBUF   port map (O => LED_LOCKED, I => master_locked);
+ledError_obuf:   OBUF   port map (O => LED_ERROR,  I => error_led_out);
+ledAdapt_obuf:   OBUF   port map (O => LED_SENDING, I => adapter_active);
 
 ----------------------------------------------------CS------------------------------------------------------------
 cs_obuf_1:  OBUF  port map  (O => CS_1, I => vmm_cs_vec_obuf(1));
@@ -2480,6 +2502,38 @@ rstn_obuf:  OBUF  port map  (O => phy_rstn_out, I => phy_rstn);
     -- 2. sel_cs
     -- 3. flow_fsm
 -------------------------------------------------------------------
+-- slow blinking process, if sending data at elink
+led_adapter_proc: process(userclk2)
+begin
+    if(rising_edge(userclk2))then
+        if(rst_cnt = '1')then
+            start_cnt <= '0';
+        elsif(adapter_active = '1' and start_cnt = '0')then
+            start_cnt <= '1';
+        elsif(adapter_active = '0' and start_cnt = '1')then
+            start_cnt <= '1';
+        else
+            start_cnt <= '0';
+        end if;
+
+        if(start_cnt = '1')then
+            if(wait_cnt_adapt = "1111111111111111111111111" and adapter_active = '0')then
+                wait_cnt_adapt  <= (others => '0');
+                adapter_active     <= '1';
+            elsif(wait_cnt_adapt = "1111111111111111111111111" and adapter_active = '1')then
+                rst_cnt         <= '1';
+            else
+                wait_cnt_adapt  <= wait_cnt_adapt + 1;
+            end if;
+        else
+            rst_cnt         <= '0';
+            wait_cnt_adapt  <= (others => '0');
+            adapter_active     <= '0';
+        end if;
+    end if;
+end process;
+
+
 sync_fifo_init: process(userclk2)
 begin
     if(rising_edge(userclk2))then
@@ -2742,6 +2796,19 @@ flow_fsm: process(userclk2)
                     state       <= IDLE;
                     is_state    <= "0110";
             end case;
+        end if;
+    end if;
+end process;
+
+latch_full_proc: process(clk_160)
+begin
+    if(rising_edge(clk_160))then
+        if(error_led = '1' and error_led_out = '0')then
+            error_led_out <= '1';
+        elsif(error_led = '0' and error_led_out = '1')then
+            error_led_out <= '1';
+        else
+            error_led_out <= '0';
         end if;
     end if;
 end process;

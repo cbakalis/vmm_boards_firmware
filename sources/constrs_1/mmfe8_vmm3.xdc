@@ -197,9 +197,17 @@ set_property PACKAGE_PIN Y14     [get_ports ELINK_DAQ_TX_N]
 set_property PACKAGE_PIN V13     [get_ports ELINK_DAQ_CLK_P]
 set_property PACKAGE_PIN V14     [get_ports ELINK_DAQ_CLK_N]
 
-#LOCK LED
+#MMCM LOCKED LED D85
 set_property IOSTANDARD LVCMOS12 [get_ports LED_LOCKED]
 set_property PACKAGE_PIN Y17     [get_ports LED_LOCKED]
+
+#E-LINK FIFO IS FULL (ERROR) LED D89
+set_property IOSTANDARD LVCMOS25 [get_ports LED_ERROR]
+set_property PACKAGE_PIN P20     [get_ports LED_ERROR]
+
+#ELINK SENDING LED D87
+set_property IOSTANDARD LVCMOS12 [get_ports LED_SENDING]
+set_property PACKAGE_PIN T3      [get_ports LED_SENDING]
 
 #W11 P
 #W12 N TTC RXP_2

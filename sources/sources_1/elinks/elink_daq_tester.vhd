@@ -19,6 +19,7 @@
 ----------------------------------------------------------------------------------
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
 
 entity elink_daq_tester is
   Port(
@@ -26,7 +27,8 @@ entity elink_daq_tester is
     ---- general interface ------
     clk_in          : in  std_logic; 
     rst             : in  std_logic;
-    tester_ena      : in  std_logic;
+    tester_ena      : in  std_logic; 
+    number_of_pack  : in  std_logic_vector(9 downto 0); -- how many packets to send
     ------------------------------
     ------ elink interface -------
     empty_elink     : in  std_logic;
@@ -38,16 +40,20 @@ end elink_daq_tester;
 architecture Behavioral of elink_daq_tester is
 
     signal wait_Cnt     : integer   := 0;
-    signal sel          : std_logic_vector(1 downto 0) := (others => '0');
+    signal send_cnt     : unsigned(9 downto 0) := (others => '0');
+    signal sel          : std_logic_vector(2 downto 0) := (others => '0');
     signal wr_en_i      : std_logic := '0';
     signal init         : std_logic := '1';
     signal check_state  : std_logic_vector(3 downto 0) := (others => '0');
     
     signal empty_elink_i : std_logic := '0';
     signal empty_elink_s : std_logic := '0';
+    
+    signal roc_sop       : std_logic := '0';
 
-    type stateType is (IDLE, START, DELAY, WRITE_START, STEP_0_MOP, STEP_1_MOP, STEP_2_MOP, 
-                       DELAY_MOP, STEP_3_MOP, WRITE_EOP_0, WRITE_EOP_1, DONE_SENDING);
+    type stateType is (IDLE, DELAY, WRITE_START, STEP_0_MOP, STEP_1_MOP, STEP_2_MOP, 
+                       DELAY_MOP, STEP_3_MOP, WRITE_ROC_EOP_0, WRITE_ROC_EOP_1,
+                       WRITE_ELINK_EOP_0, WRITE_ELINK_EOP_1, DELAY_EOP, DONE_SENDING);
     signal state : stateType := IDLE;
 
     attribute FSM_ENCODING          : string;
@@ -65,7 +71,9 @@ begin
         if(rst = '1')then
             check_state <= (others => '0');
             sel         <= (others => '0');
+            send_cnt    <= (others => '0');
             wr_en_i     <= '0';
+            roc_sop     <= '0';
             wait_Cnt    <= 0;
             init        <= '1';
             state       <= IDLE;
@@ -73,7 +81,7 @@ begin
             case state is
             when IDLE =>
                 check_state <= "0001";
-                sel         <= "10"; -- select SOP
+                sel         <= "000"; -- select SOP
                 wr_en_i     <= '0';
 
                 if(tester_ena = '1' and empty_elink_s = '1')then -- proceed if elink fifo is empty      
@@ -84,7 +92,7 @@ begin
                 
             when DELAY =>   -- holding delay allows FIFO2Elink to send comma characters
                 check_state <= "0010";
-                if(wait_Cnt < 1_000)then
+                if(wait_Cnt < 10_000)then
                     wait_Cnt    <= wait_Cnt + 1;
                     state       <= DELAY;
                 else
@@ -104,10 +112,13 @@ begin
 
             when STEP_1_MOP =>
                 check_state <= "0101";
-                if(init = '1')then
-                    sel         <= "00"; -- select data (1234)
+                if(init = '0' and roc_sop = '1')then
+                    sel         <= "011"; -- select data (1234)
+                elsif(init = '1' and roc_sop = '1')then
+                    sel         <= "100"; -- select data (5678)
                 else
-                    sel         <= "11"; -- select data (5678)
+                    sel         <= "001"; -- select ROC_SOP
+                    roc_sop     <= '1';
                 end if;    
                 state       <= DELAY_MOP;
                 
@@ -124,33 +135,60 @@ begin
                 check_state <= "1000";
                 wr_en_i     <= '0';
                 
-                if(wait_Cnt <= 40)then -- write 1234 and 5678 21 times each
-                    wait_Cnt    <= wait_Cnt + 1;
+                if(send_cnt < unsigned(number_of_pack))then -- write 1234 and 5678 40 times each
+                    send_cnt    <= send_cnt + 1;
                     init        <= not init;
                     state       <= STEP_0_MOP;
                 else
-                    wait_Cnt    <= 0;
+                    send_cnt    <= (others => '0');
                     init        <= '1'; 
-                    sel         <= "01"; -- select EOP
-                    state       <= WRITE_EOP_0;
+                    state       <= WRITE_ROC_EOP_0;
                 end if;
 
-            when WRITE_EOP_0 =>
+            when WRITE_ROC_EOP_0 =>
                 check_state <= "1001";
-                state       <= WRITE_EOP_1;
-
-            when WRITE_EOP_1 =>
+                sel         <= "101"; -- select ROC_EOP
+                if(sel = "101")then -- delay for one cycle
+                    state       <= WRITE_ROC_EOP_1;
+                else
+                    state       <= WRITE_ROC_EOP_0;
+                end if;
+             
+            when WRITE_ROC_EOP_1 =>
                 check_state <= "1010";
                 wr_en_i     <= '1';
-                state       <= DONE_SENDING;
+                state       <= WRITE_ELINK_EOP_0;
 
-            when DONE_SENDING => -- go back to IDLE
+            when WRITE_ELINK_EOP_0 => -- go and write the e-link EOP
                 check_state <= "1011";
                 wr_en_i     <= '0';
+                state       <= DELAY_EOP;
+                
+            when DELAY_EOP =>
+                check_state <= "1100";
+                sel         <= "110"; -- select EOP
+                state       <= WRITE_ELINK_EOP_1;
+                
+            when WRITE_ELINK_EOP_1 =>
+                check_state <= "1101";
+                wr_en_i     <= '1';
+                roc_sop     <= '0';
+                state       <= DONE_SENDING;  
+                
+            when DONE_SENDING =>
+                check_state <= "1110";
+                wr_en_i     <= '0';
                 state       <= IDLE;
+                
 
             when others => 
-                state <= IDLE;
+                check_state <= (others => '0');
+                sel         <= (others => '0');
+                wr_en_i     <= '0';
+                roc_sop     <= '0';
+                wait_Cnt    <= 0;
+                init        <= '0';
+                state       <= IDLE;
             end case;
         end if;
     end if;
@@ -159,10 +197,12 @@ end process;
 muxProc: process(sel)
 begin
     case sel is
-    when "00" =>    dout <= "00" & x"1234"; -- DATA 1234
-    when "01" =>    dout <= "01" & x"0000"; -- EOP
-    when "10" =>    dout <= "10" & x"0000"; -- SOP
-    when "11" =>    dout <= "00" & x"5678"; -- DATA 5678
+    when "000" =>    dout <= "10" & x"0000"; -- SOP
+    when "001" =>    dout <= "00" & x"3c00";  -- ROC_SOP
+    when "011" =>    dout <= "00" & x"1234"; -- DATA 1234
+    when "100" =>    dout <= "00" & x"5678"; -- DATA 5678
+    when "101" =>    dout <= "00" & x"00dc";  -- ROC_EOP
+    when "110" =>    dout <= "01" & x"0000"; -- EOP
     when others =>  dout <= (others => '0'); 
     end case;
 end process;
