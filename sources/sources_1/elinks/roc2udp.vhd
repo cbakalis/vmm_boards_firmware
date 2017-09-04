@@ -185,7 +185,7 @@ begin
             -- check the word
             when ST_CHK_WORD =>
                 dbg_roc_fsm     <= "0101";
-                if(real_roc = '0' and packLen_cnt = 2 and din_fifo(7 downto 0) /= x"00")then
+                if(real_roc = '0' and packLen_cnt = 2 and din_fifo(7 downto 0) /= x"00" and din_fifo(7 downto 0) /= ROC_EOP)then
                     state_wr    <= ST_CHK_UDP; -- ERROR: that was not the real SOP, since the FPGA uses only the 8 LSB of the event_counter
                 elsif(real_roc = '0' and din_fifo (15 downto 8) = x"00" and din_fifo(7 downto 0) = ROC_EOP)then -- probably ROC trailer from FPGA (no checksum)
                     state_wr    <= ST_CHK_EOP_0;
