@@ -189,7 +189,9 @@ begin
                     state_wr    <= ST_CHK_UDP; -- ERROR: that was not the real SOP, since the FPGA uses only the 8 LSB of the event_counter
                 elsif(real_roc = '0' and din_fifo (15 downto 8) = x"00" and din_fifo(7 downto 0) = ROC_EOP)then -- probably ROC trailer from FPGA (no checksum)
                     state_wr    <= ST_CHK_EOP_0;
-                elsif(real_roc = '1' and din_fifo(7 downto 0) = ROC_EOP)then -- that was the EOP (add checksum check?)
+                elsif(real_roc = '0' and packLen_cnt = 2 and din_fifo(7 downto 0) = ROC_EOP)then -- that was the null event EOP from the FPGA
+                    state_wr    <= ST_CHK_EOP_0;
+                elsif(real_roc = '1' and din_fifo(7 downto 0) = ROC_EOP)then -- that was the EOP from ROC (add checksum check?)
                     state_wr    <= ST_CHK_EOP_0;
                 else
                     state_wr    <= ST_WR_WORD; -- not EOP, but still a packet...
