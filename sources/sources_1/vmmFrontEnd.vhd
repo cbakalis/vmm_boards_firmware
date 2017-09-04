@@ -2512,6 +2512,8 @@ begin
             start_cnt <= '1';
         elsif(adapter_active = '0' and start_cnt = '1')then
             start_cnt <= '1';
+        elsif(adapter_active = '1' and start_cnt = '1')then
+            start_cnt <= '1';
         else
             start_cnt <= '0';
         end if;
