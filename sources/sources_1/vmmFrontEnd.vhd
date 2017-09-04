@@ -619,7 +619,7 @@ architecture Behavioral of vmmFrontEnd is
     signal rst_cnt              : std_logic := '0';
     signal start_cnt            : std_logic := '0';
     signal wait_cnt_adapt       : unsigned(24 downto 0) := (others => '0');
-    signal adapter_active          : std_logic := '0';
+    signal adapt_led_o          : std_logic := '0';
 
     -------------------------------------------------
     -- Flow FSM signals
@@ -2335,7 +2335,7 @@ elink_rx_daq_buf: IBUFDS generic map  (IOSTANDARD => "DEFAULT", IBUF_LOW_PWR => 
 
 led_obuf:        OBUF   port map (O => LED_LOCKED, I => master_locked);
 ledError_obuf:   OBUF   port map (O => LED_ERROR,  I => error_led_out);
-ledAdapt_obuf:   OBUF   port map (O => LED_SENDING, I => adapter_active);
+ledAdapt_obuf:   OBUF   port map (O => LED_SENDING, I => adapt_led_o);
 
 ----------------------------------------------------CS------------------------------------------------------------
 cs_obuf_1:  OBUF  port map  (O => CS_1, I => vmm_cs_vec_obuf(1));
@@ -2517,10 +2517,10 @@ begin
         end if;
 
         if(start_cnt = '1')then
-            if(wait_cnt_adapt = "1111111111111111111111111" and adapter_active = '0')then
+            if(wait_cnt_adapt = "1111111111111111111111111" and adapt_led_o = '0')then
                 wait_cnt_adapt  <= (others => '0');
-                adapter_active     <= '1';
-            elsif(wait_cnt_adapt = "1111111111111111111111111" and adapter_active = '1')then
+                adapt_led_o     <= '1';
+            elsif(wait_cnt_adapt = "1111111111111111111111111" and adapt_led_o = '1')then
                 rst_cnt         <= '1';
             else
                 wait_cnt_adapt  <= wait_cnt_adapt + 1;
@@ -2528,7 +2528,7 @@ begin
         else
             rst_cnt         <= '0';
             wait_cnt_adapt  <= (others => '0');
-            adapter_active     <= '0';
+            adapt_led_o     <= '0';
         end if;
     end if;
 end process;
