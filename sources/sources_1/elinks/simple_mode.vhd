@@ -118,7 +118,7 @@ begin
             when ST_CHK_CNT =>
                 dbg_spl_fsm <= "0100";
                 wr_en_daq   <= '0';
-                if(packLen_cnt = 32)then -- one kbyte ready to be sent (1024) (must be even number)
+                if(packLen_cnt >= 1024)then -- one kbyte ready to be sent (1024)
                     wr_en_len   <= '1';
                     state_wr    <= ST_WR_LEN;
                 else
