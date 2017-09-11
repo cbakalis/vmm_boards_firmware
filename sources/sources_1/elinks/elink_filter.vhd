@@ -28,7 +28,7 @@
 -- Tool Versions: Vivado 2017.2
 -- Description: This module acts as a filter between the elink output and the 
 -- elink2UDP input. If the elink header is detected, then it is being discarded.
--- Elink header has the format: 0x-- 0x20 0x00 0x-- 0xcd 0xab
+-- Elink header has the format: 0x-- 0x20/0x21/0x22/0x23/0x83 0x00 0x-- 0xcd 0xab
 -- Changelog:
 --
 ----------------------------------------------------------------------------------
@@ -155,9 +155,10 @@ begin
             when ST_CHK =>
                 dbg_filter          <= "001";
                  -- possibility that this is the header.
-                 -- fill the buffer and check. grant FIFO
+                 -- start filling buffer. grant FIFO
                  -- control to other process
-                if(din_elink(7 downto 0) = x"20")then
+                if(din_elink(7 downto 0) = x"20" or din_elink(7 downto 0) = x"21" or din_elink(7 downto 0) = x"22"
+                or din_elink(7 downto 0) = x"23" or din_elink(7 downto 0) = x"83")then
                     wr_en_buff      <= '1';
                     sel_48to16      <= '1';
                     wr_en_fifo      <= '0';
@@ -294,7 +295,7 @@ begin
             -- is this the unwanted header?
             when ST_CHECK =>
                 rst_buff_cnt      <= '0';
-                if(dout_buff(39 downto 24) = x"2000" and dout_buff(15 downto 0) = x"cdab")then
+                if(dout_buff(15 downto 0) = x"cdab")then
                     state_48to16 <= ST_IDLE; -- discard
                 else
                     state_48to16 <= ST_DRIVE;    
