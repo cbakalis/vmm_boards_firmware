@@ -73,8 +73,7 @@ port(
     --------- PF Interface ----------
     din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
     wr_en_daq       : in  std_logic;                     -- write enable from packet formation
-    din_aux         : in  std_logic_vector(15 downto 0); -- auxiliary data (VMM & packet length)
-    wr_en_aux       : in  std_logic;                     -- auxiliary data (VMM & packet length) 
+    vmm_id_pf       : in  std_logic_vector(2 downto 0);
     trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)  
     bitmask_null    : in  std_logic_vector(7 downto 0);  -- which VMMs have data?
     start_null      : in  std_logic;                     -- start the null header FSM
@@ -115,8 +114,7 @@ component elink_daq_driver
     ------- pf interface ------
     din_daq         : in  std_logic_vector(15 downto 0);
     wr_en_daq       : in  std_logic;
-    din_aux         : in  std_logic_vector(15 downto 0);
-    wr_en_aux       : in  std_logic;
+    vmm_id_pf       : in  std_logic_vector(2 downto 0);
     trigger_cnt     : in  std_logic_vector(15 downto 0);
     start_null      : in  std_logic;
     start_pack      : in  std_logic;
@@ -288,8 +286,7 @@ port map(
     ------- pf interface ------
     din_daq         => din_daq,
     wr_en_daq       => wr_en_daq,
-    din_aux         => din_aux,
-    wr_en_aux       => wr_en_aux,
+    vmm_id_pf       => vmm_id_pf,
     trigger_cnt     => trigger_cnt,
     start_null      => start_null,
     start_pack      => start_pack,
@@ -297,8 +294,8 @@ port map(
     elink_done      => elink_done,
     ---------------------------
     ------ elink inteface -----
-    full_elink     => full_elink_tx,
-    hf_elink       => hafFull_elink_tx,
+    full_elink      => full_elink_tx,
+    hf_elink        => hafFull_elink_tx,
     empty_elink     => empty_elink_tx,
     wr_en_elink     => wr_en_elink_daq,
     dout_elink      => data_elink_daq

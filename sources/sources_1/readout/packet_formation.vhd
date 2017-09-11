@@ -77,8 +77,6 @@ entity packet_formation is
         linkHealth_bmsk : in std_logic_vector(8 downto 1);
         rst_FIFO        : out std_logic;
 
-        elink_aux_dout  : out std_logic_vector(15 downto 0);
-        elink_aux_wr    : out std_logic;
         elink_daq_wr    : out std_logic;
         elink_tr_cnt    : out std_logic_vector(15 downto 0);
         vmm_null_bmsk   : in  std_logic_vector(7 downto 0);
@@ -134,7 +132,6 @@ architecture Behavioral of packet_formation is
     signal trraw_synced125_prev : std_logic                     := '0';
     signal clearValid           : std_logic                     := '0';
     signal elink_daq_wr_allow   : std_logic                     := '0';
-    signal elink_aux_wr_i       : std_logic                     := '0';
     signal wrenable_i           : std_logic                     := '0';
     signal pf_null_bmsk_i       : std_logic_vector(7 downto 0)  := (others => '0');
 
@@ -220,7 +217,6 @@ begin
             daqFIFO_wr_en_hdr       <= '0';
             start_null              <= '0';
             start_pack              <= '0';
-            elink_aux_wr_i          <= '0';
             elink_daq_wr_allow      <= '0';
             packLen_cnt             <= x"000";
             wait_Cnt                <= 0;
@@ -242,7 +238,6 @@ begin
                 start_null              <= '0';
                 elink_daq_wr_allow      <= '0';
                 start_pack              <= '0';
-                elink_aux_wr_i          <= '0';
                 pf_null_bmsk_i          <= x"ff";
                 sel_cnt                 <= (others => '0');
                 rst_FIFO                <= '0';
@@ -383,11 +378,6 @@ begin
                 end if;
 
             when sendTrailer =>
-                if(pf_null_bmsk_i(vmmId_cnt) = '1')then -- this vmm empty, do not write anything to the elink aux FIFO
-                    elink_aux_wr_i <= '0';
-                else
-                    elink_aux_wr_i <= '1';
-                end if;
                 debug_state         <= "01100";
                 elink_daq_wr_allow  <= '0'; -- stop writing
                 packLen_i           <= packLen_cnt + packLen_drv2pf_unsg; 
@@ -396,7 +386,6 @@ begin
             when packetDone =>
                 debug_state     <= "01101";
                 end_packet_int  <= '1';
-                elink_aux_wr_i  <= '0';
                 if(is_mmfe8 = '1')then
                     state       <= eventDone;
                 else
@@ -533,9 +522,7 @@ triggerEdgeDetection: process(clk) --125
 syncWrEnData: process(clk)
 begin
     if(rising_edge(clk))then
-        elink_aux_dout  <= vmmId_i & '0' & packLen_drv2pf;
         elink_daq_wr    <= daqFIFO_wr_en_drv and elink_daq_wr_allow and elink_drv_ena;
-        elink_aux_wr    <= elink_aux_wr_i and elink_drv_ena;
         dataout         <= daqFIFO_din;
         wrenable        <= wrenable_i;
     end if;

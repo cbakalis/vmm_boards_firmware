@@ -36,6 +36,7 @@
 -- (Christos Bakalis).
 -- 27.08.2017 Major changes. Breakdown to three different FSMs. (Christos Bakalis)
 -- 30.08.2017 All VMM hits are now packed in a single ROC packet. (Christos Bakalis)
+-- 08.09.2017 Added VMM FIFO buffering network for optimization. (Christos Bakalis)
 --
 --------------------------------------------------------------------------------------
 library IEEE;
@@ -56,8 +57,7 @@ entity elink_daq_driver is
         ------- pf interface ------
         din_daq         : in  std_logic_vector(15 downto 0);
         wr_en_daq       : in  std_logic;
-        din_aux         : in  std_logic_vector(15 downto 0);
-        wr_en_aux       : in  std_logic;
+        vmm_id_pf       : in  std_logic_vector(2 downto 0);
         trigger_cnt     : in  std_logic_vector(15 downto 0);
         start_null      : in  std_logic;
         start_pack      : in  std_logic;
@@ -75,32 +75,25 @@ end elink_daq_driver;
 
 architecture RTL of elink_daq_driver is
 
--- FIFO that buffers the DAQ data
-component DAQelinkFIFO
-  port (
-    clk     : in  std_logic;
-    srst    : in  std_logic;
-    din     : in  std_logic_vector(15 downto 0);
-    wr_en   : in  std_logic;
-    rd_en   : in  std_logic;
-    dout    : out std_logic_vector(15 downto 0);
-    full    : out std_logic;
-    empty   : out std_logic
-  );
-end component;
-
--- FIFO that buffers the VMM_ID and the length of the packet
-component AuxElinkFIFO
-  port (
-    clk     : in  std_logic;
-    srst    : in  std_logic;
-    din     : in  std_logic_vector(15 downto 0);
-    wr_en   : in  std_logic;
-    rd_en   : in  std_logic;
-    dout    : out std_logic_vector(15 downto 0);
-    full    : out std_logic;
-    empty   : out std_logic
-  );
+-- FIFO network for data buffering
+component fifo_network
+    Port(
+    ---------------------------
+    ---- general interface ---- 
+    clk_in      : in  std_logic;
+    fifo_flush  : in  std_logic;
+    ---------------------------
+    ------- pf interface ------
+    vmm_id_pf   : in  std_logic_vector(2 downto 0);
+    din_daq     : in  std_logic_vector(15 downto 0);
+    wr_en_daq   : in  std_logic;
+    ---------------------------
+    --- driver interface ------
+    vmm_id_drv  : in  std_logic_vector(2 downto 0);
+    rd_en_daq   : in  std_logic;
+    dout_daq    : out std_logic_vector(15 downto 0);
+    empty_daq   : out std_logic
+    );
 end component;
 
 -- FIFO in-between this module and the elink FIFO
@@ -124,10 +117,15 @@ component elink_ila
   );
 end component;
 
+    signal vmm_id_rdy       : std_logic := '0';
+    signal all_read         : std_logic := '0';
+    signal wait_id          : unsigned(2 downto 0) := (others => '0');
+    signal vmm_id_cnt       : unsigned(2 downto 0) := (others => '0');
+    signal vmm_id_drv       : std_logic_vector(2 downto 0) := (others => '0');
+    signal pack_rdy_incr    : std_logic := '0';
+
     signal rd_en_daq        : std_logic := '0';
-    signal dout_fifo        : std_logic_vector(15 downto 0) := (others => '0');
-    signal daq_full         : std_logic := '0';
-    signal daq_empty        : std_logic := '0';    
+    signal dout_daq         : std_logic_vector(15 downto 0) := (others => '0');  
     signal hitsLen          : std_logic_vector(9 downto 0) := (others => '0');
     signal len_cnt          : unsigned(9 downto 0) := (others => '0');
     signal wait_cnt         : unsigned(1 downto 0) := (others => '0');
@@ -155,19 +153,13 @@ end component;
     signal wr_ena_pack      : std_logic := '0';
     signal wr_ena_null      : std_logic := '0';
     signal wr_en_fifo       : std_logic := '0';
+    signal empty_daq        : std_logic := '0';
     signal data_out_pack    : std_logic_vector(15 downto 0)  := (others => '0');
     signal data_out_null    : std_logic_vector(15 downto 0)  := (others => '0');
     
-    signal rd_en_aux        : std_logic := '0';
-    signal cnt_read         : unsigned(11 downto 0) := (others => '0');
     signal cnt_limit        : std_logic_vector(11 downto 0) := (others => '0');
-    signal aux_empty        : std_logic := '0';
-    signal aux_full         : std_logic := '0';
     signal first_vmm        : std_logic := '1';
     signal vmm_id           : std_logic_vector(2 downto 0)  := (others => '0');
-    signal din_aux_fifo     : std_logic_vector(15 downto 0) := (others => '0');
-    signal dout_aux_fifo    : std_logic_vector(15 downto 0) := (others => '0');
-    signal wr_en_aux_fifo   : std_logic := '0';
     signal ena_adapt_null   : std_logic := '0';
     signal ena_adapt_pack   : std_logic := '0';
     
@@ -188,8 +180,8 @@ end component;
     signal debug_pack       : std_logic_vector(4 downto 0) := (others => '0');
     signal debug_adapt      : std_logic_vector(3 downto 0) := (others => '0');
 
-    signal flush_i          : std_logic := '0';
-    signal flush_final      : std_logic := '0';
+    signal flush_net_i      : std_logic := '0';
+    signal flush_net        : std_logic := '0';
     
     -- E-LINK EOP and SOP
     constant SOP            : std_logic_vector(1 downto 0) := "10";
@@ -203,14 +195,16 @@ end component;
     constant ROC_EOP        : std_logic_vector(7 downto 0) := "11011100"; -- K28.6
 
     -- state signals and attributes
-    type stateType_pack is  (ST_IDLE, ST_REG_HDR, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_SEND_HDR_4, ST_CHK_AUX,
+    type stateType_pack is  (ST_IDLE, ST_READ, ST_REG_HDR, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_SEND_HDR_4, ST_CHK_AUX,
                               ST_READ_DATA_0, ST_READ_DATA_1, ST_REG_DATA_0, ST_REG_DATA_1, ST_SEND_DATA_0, ST_SEND_DATA_1, ST_SEND_DATA_2,
-                              ST_CHK_CNTR, ST_WR_TRL_0, ST_WR_TRL_1, ST_WR_TRL_2, ST_WR_TRL_3, ST_WR_EOP_0, ST_WR_EOP_1, ST_DONE, ST_WAIT,
-                              ST_ERROR_FLUSH, ST_ERROR);
+                              ST_CHK_CNTR, ST_CHK_FSM_INCR, ST_INCR_VMM, ST_WR_TRL_0, ST_WR_TRL_1, ST_WR_TRL_2, ST_WR_TRL_3, ST_WR_EOP_0, 
+                              ST_WR_EOP_1, ST_DONE, ST_WAIT);
                               
     type stateType_null is  (ST_IDLE, ST_SEND_EOP, ST_SEND_HDR_0, ST_SEND_HDR_1, ST_SEND_HDR_2, ST_SEND_HDR_3, ST_WR_EOP_0, ST_WR_EOP_1, ST_DONE, ST_WAIT);
 
     type stateType_adapt is (ST_IDLE, ST_TIMEOUT, ST_READ, ST_WRITE, ST_WAIT, ST_CNT, ST_DONE);
+
+    type stateType_cnt is (ST_CHK, ST_WAIT_MUX, ST_INCR, ST_WAIT_PACK, ST_DONE);
 
     signal state_pack       : stateType_pack := ST_IDLE;
     signal state_null       : stateType_null := ST_IDLE;
@@ -218,31 +212,29 @@ end component;
     signal state_prv_null   : stateType_null := ST_IDLE;
     signal state_adapt      : stateType_adapt:= ST_IDLE;
     signal state_adapt_prv  : stateType_adapt:= ST_IDLE;
+    signal state_id         : stateType_cnt  := ST_CHK;
 
-    attribute FSM_ENCODING  : string;
+    attribute FSM_ENCODING                  : string;
     attribute FSM_ENCODING of state_pack    : signal is "ONE_HOT";
     attribute FSM_ENCODING of state_null    : signal is "ONE_HOT";
     attribute FSM_ENCODING of state_adapt   : signal is "ONE_HOT";
+    attribute FSM_ENCODING of state_id      : signal is "ONE_HOT";
     
-    attribute ASYNC_REG : string;
+    attribute ASYNC_REG                     : string;
     attribute ASYNC_REG of empty_elink_i    : signal is "TRUE";
     attribute ASYNC_REG of empty_elink_s    : signal is "TRUE";    
     
 --    attribute mark_debug  : string;
     
---    attribute mark_debug of aux_full        : signal is "TRUE";
 --    attribute mark_debug of adapter_full    : signal is "TRUE";
 --    attribute mark_debug of daq_full        : signal is "TRUE";
 --    attribute mark_debug of trigger_cnt     : signal is "TRUE";
 --    attribute mark_debug of dout_elink_i    : signal is "TRUE";
---    attribute mark_debug of dout_aux_fifo   : signal is "TRUE";
 --    attribute mark_debug of rd_en_adapter   : signal is "TRUE";
 --    attribute mark_debug of wr_en_adapter   : signal is "TRUE";
---    attribute mark_debug of wr_en_aux_fifo  : signal is "TRUE";
 --    attribute mark_debug of wr_en_elink_i   : signal is "TRUE";
 --    attribute mark_debug of start_pack      : signal is "TRUE";
 --    attribute mark_debug of adapter_empty   : signal is "TRUE";
---    attribute mark_debug of aux_empty       : signal is "TRUE";
 --    attribute mark_debug of daq_empty       : signal is "TRUE";
 --    attribute mark_debug of hf_elink        : signal is "TRUE";
 --    attribute mark_debug of full_elink      : signal is "TRUE";
@@ -250,6 +242,80 @@ end component;
 --    attribute mark_debug of debug_pack      : signal is "TRUE";
 
 begin
+
+------------------------------------------
+--------- FSM VMM_ID CTRL ----------------
+------------------------------------------
+FSM_vmmID_ctrl_drv: process(clk_in)
+begin
+    if(rising_edge(clk_in))then
+        if(start_pack = '0')then
+            vmm_id_rdy  <= '0';
+            all_read    <= '0';
+            wait_id     <= (others => '0');
+            vmm_id_cnt  <= (others => '0');
+            state_id    <= ST_CHK;
+        else
+            case state_id is
+
+            -- check the vmm counter
+            when ST_CHK =>
+                vmm_id_rdy  <= '0';
+                all_read    <= '0';
+                if(bitmask_null(to_integer(vmm_id_cnt)) = '1')then -- this VMM is empty
+                    state_id <= ST_INCR;
+                else
+                    state_id <= ST_WAIT_MUX;
+                end if;
+
+            -- wait for the multiplexer
+            when ST_WAIT_MUX =>
+                vmm_id_rdy  <= '0';
+                all_read    <= '0';
+                wait_id     <= wait_id + 1;
+                if(wait_id = "111")then
+                    state_id <= ST_WAIT_PACK;
+                else
+                    state_id <= ST_WAIT_MUX;
+                end if;
+
+            -- increase the counter
+            when ST_INCR =>
+                vmm_id_rdy  <= '0';
+                all_read    <= '0';
+                vmm_id_cnt  <= vmm_id_cnt + 1;
+                if(vmm_id_cnt = "111")then
+                    state_id <= ST_DONE;
+                else
+                    state_id <= ST_CHK;
+                end if;
+
+            -- mux ready, wait for packet FSM to finish writing data 
+            when ST_WAIT_PACK =>
+                vmm_id_rdy  <= '1';
+                all_read    <= '0';
+                if(pack_rdy_incr = '1')then
+                    state_id <= ST_INCR;
+                else
+                    state_id <= ST_WAIT_PACK;
+                end if;
+
+            -- all VMMs have been read, stay here until reset by PF
+            when ST_DONE =>
+                vmm_id_rdy  <= '0';
+                all_read    <= '1';
+
+            when others =>
+                vmm_id_rdy  <= '0';
+                all_read    <= '0';
+                wait_id     <= (others => '0');
+                vmm_id_cnt  <= (others => '0');
+                state_id    <= ST_CHK;
+            end case;
+
+        end if;
+    end if;
+end process;
 
 ------------------------------------------
 -------------- FSM HIT PACKET ------------
@@ -265,11 +331,10 @@ begin
             sent_one        <= '0';
             first_vmm       <= '1';
             pack_done       <= '0';
-            rd_en_aux       <= '0';
             ena_adapt_pack  <= '0';
-            flush_i         <= '0';
+            pack_rdy_incr   <= '0';
+            flush_net_i     <= '0';
             wait_cnt        <= (others => '0');
-            cnt_read        <= (others => '0');
             cnt_mop         <= (others => '0');
             len_cnt         <= (others => '0');
             debug_pack      <= (others => '0');
@@ -277,28 +342,32 @@ begin
         else
             case state_pack is
 
-            -- activated, read the first word
+            -- wait for the VMM ID driving FSM to finish
             when ST_IDLE =>
+                pack_rdy_incr   <= '0';
+                if(all_read = '1')then
+                    state_pack  <= ST_WR_TRL_0;
+                elsif(vmm_id_rdy = '1')then
+                    state_pack  <= ST_READ;
+                else
+                    state_pack  <= ST_IDLE;
+                end if;
+
+            -- activated, read the first word
+            when ST_READ =>
                 debug_pack <= "00001";
                 rd_en_daq   <= '1'; -- if this is not the first VMM, 
                                     -- this reading will just discard the in-between VMM header
-                rd_en_aux   <= '1'; -- also read the auxiliary FIFO
-                cnt_read    <= cnt_read + 1;
                 flag_pack   <= SOP;
-                state_prv   <= ST_IDLE;
-                if(daq_empty = '0')then
-                    state_pack  <= ST_WAIT; -- to ST_REG_HDR or ST_READ_DATA_0
-                else
-                    state_pack  <= ST_ERROR_FLUSH; -- error! tried to read an empty DAQ fifo
-                end if;
-
+                state_prv   <= ST_READ;
+                state_pack  <= ST_WAIT; -- to ST_REG_HDR or ST_READ_DATA_0
 
             -- register the header and write the elink SOP
             when ST_REG_HDR =>
                 debug_pack <= "00010";
                 wr_ena_pack <= '1';
-                bcid        <= dout_fifo(11 downto 0);
-                orb         <= dout_fifo(13 downto 12);
+                bcid        <= dout_daq(11 downto 0);
+                orb         <= dout_daq(13 downto 12);
                 state_prv   <= ST_REG_HDR;
                 state_pack  <= ST_WAIT; -- to ST_SEND_HDR_0
 
@@ -344,22 +413,17 @@ begin
             when ST_READ_DATA_0 =>
                 debug_pack <= "01000";
                 rd_en_daq   <= '1';
-                cnt_read    <= cnt_read + 1;
                 flag_pack   <= MOP;
                 cnt_mop     <= "010";
                 state_prv   <= ST_READ_DATA_0;
-                if(daq_empty = '0')then
-                    state_pack  <= ST_WAIT; -- to ST_REG_DATA_0
-                else
-                    state_pack  <= ST_ERROR_FLUSH;  -- error! tried to read an empty DAQ fifo
-                end if;
+                state_pack  <= ST_WAIT; -- to ST_REG_DATA_0
 
             -- register the first hit word
             when ST_REG_DATA_0 =>
                 debug_pack <= "01001";
-                P               <= dout_fifo(14);
-                channel_id      <= dout_fifo(11 downto 6);
-                pdo(9 downto 4) <= dout_fifo(5 downto 0);
+                P               <= dout_daq(14);
+                channel_id      <= dout_daq(11 downto 6);
+                pdo(9 downto 4) <= dout_daq(5 downto 0);
                 state_prv       <= ST_REG_DATA_0;
                 state_pack      <= ST_WAIT; -- to ST_READ_DATA_1
 
@@ -367,22 +431,17 @@ begin
             when ST_READ_DATA_1 =>
                 debug_pack <= "01010";
                 rd_en_daq   <= '1';
-                cnt_read    <= cnt_read + 1;
                 len_cnt     <= len_cnt + 1;
                 state_prv   <= ST_READ_DATA_1;
-                if(daq_empty = '0')then
-                    state_pack  <= ST_WAIT; -- to ST_REG_DATA_1
-                else
-                    state_pack  <= ST_ERROR_FLUSH;  -- error! tried to read an empty DAQ fifo
-                end if;
+                state_pack  <= ST_WAIT; -- to ST_REG_DATA_1
 
             -- register the second hit word
             when ST_REG_DATA_1 =>
                 debug_pack <= "01011";
-                pdo(3 downto 0) <= dout_fifo(15 downto 12);
-                tdo             <= dout_fifo(11 downto 4);
-                N               <= dout_fifo(3);
-                rel_bcid        <= dout_fifo(2 downto 0);
+                pdo(3 downto 0) <= dout_daq(15 downto 12);
+                tdo             <= dout_daq(11 downto 4);
+                N               <= dout_daq(3);
+                rel_bcid        <= dout_daq(2 downto 0);
                 state_prv       <= ST_REG_DATA_1;
                 state_pack      <= ST_WAIT;  -- to ST_SEND_DATA_0
 
@@ -413,8 +472,8 @@ begin
                 sent_one    <= '1'; -- flag that indicates one packet has been sent
                 tdo_prv     <= tdo;
                 state_prv   <= ST_CHK_CNTR;
-                if(cnt_read >= unsigned(cnt_limit))then
-                    state_pack <= ST_CHK_AUX;
+                if(empty_daq = '1')then
+                    state_pack <= ST_CHK_FSM_INCR;
                 else
                     state_pack <= ST_WAIT; -- to ST_READ_DATA_0
                 end if;
@@ -423,29 +482,39 @@ begin
 
             -----------------------------------------------
             -----------------------------------------------
+            -- VMM increment FSM interfacing states
 
-            -- is this the last VMM?
-            when ST_CHK_AUX =>
-                debug_pack <= "10011";
-                cnt_read    <= (others => '0');
+            -- check the state of the vmm_id counting FSM
+            when ST_CHK_FSM_INCR =>
+                debug_pack  <= "10011";
                 first_vmm   <= '0';
-                if(aux_empty = '1' and daq_empty = '1')then
+                if(all_read = '1')then -- all VMMs have been read
                     state_pack <= ST_WR_TRL_0;
-                elsif(aux_empty = '1' and daq_empty = '0')then -- this is not good reaed the daq fifo too much
-                    state_pack <= ST_ERROR_FLUSH;
+                elsif(vmm_id_rdy = '1')then -- more VMMs to be read
+                    state_pack <= ST_INCR_VMM;
                 else
+                    state_pack <= ST_CHK_FSM_INCR;
+                end if;
+
+            when ST_INCR_VMM =>
+                debug_pack     <= "10100";
+                pack_rdy_incr  <= '1';
+                if(vmm_id_rdy = '0')then
                     state_pack <= ST_IDLE;
+                else
+                    state_pack <= ST_INCR_VMM;
                 end if;
 
             -----------------------------------------------
+            -----------------------------------------------
             -- start sending the roc trailer
             when ST_WR_TRL_0 =>
-                debug_pack <= "10100";
+                debug_pack  <= "10101";
                 state_prv   <= ST_WR_TRL_0;
                 state_pack  <= ST_WAIT; -- to ST_WR_TRL_1
 
             when ST_WR_TRL_1 =>
-                debug_pack <= "10101";
+                debug_pack <= "10110";
                 state_prv   <= ST_WR_TRL_1;
                 state_pack  <= ST_WAIT; -- to ST_WR_TRL_2
                 if(cnt_mop = "011")then
@@ -492,6 +561,7 @@ begin
                 debug_pack <= "11011";
                 wr_ena_pack     <= '0';
                 ena_adapt_pack  <= '1';
+                flush_net_i     <= '1';
                 state_pack      <= ST_DONE;
                 if(adapt_done = '1')then
                     pack_done   <= '1';
@@ -500,32 +570,15 @@ begin
                 end if;
             -----------------------------------------------
 
-            -- error state...
-            when ST_ERROR_FLUSH =>
-                flush_i     <= '1';
-                wait_cnt    <= wait_cnt + 1;
-                if(wait_cnt = "11")then
-                    state_pack <= ST_ERROR;
-                else
-                    state_pack <= ST_ERROR_FLUSH;
-                end if;
-
-            -- error state. wait to be reset by PF
-            when ST_ERROR =>
-                debug_pack <= "11111";
-                pack_done       <= '1';
-                ena_adapt_pack  <= '0';
-
             -- generic state that waits
             when ST_WAIT =>
                 debug_pack <= "11100";
                 rd_en_daq   <= '0';
                 wr_ena_pack <= '0';
-                rd_en_aux   <= '0';
                 wait_cnt    <= wait_cnt + 1;
                 if(wait_cnt = "11")then
                     case state_prv is
-                    when ST_IDLE        => if(first_vmm = '1')then state_pack <= ST_REG_HDR; else state_pack <= ST_READ_DATA_0; end if;
+                    when ST_READ        => if(first_vmm = '1')then state_pack <= ST_REG_HDR; else state_pack <= ST_READ_DATA_0; end if;
                     when ST_REG_HDR     => state_pack <= ST_SEND_HDR_0;
                     when ST_SEND_HDR_0  => state_pack <= ST_SEND_HDR_1;
                     when ST_SEND_HDR_1  => state_pack <= ST_SEND_HDR_2;
@@ -558,10 +611,9 @@ begin
                 sent_one        <= '0';
                 pack_done       <= '0';
                 first_vmm       <= '1';
-                rd_en_aux       <= '0';
                 ena_adapt_pack  <= '0';
-                flush_i         <= '0';
-                cnt_read        <= (others => '0');
+                flush_net_i     <= '0';
+                pack_rdy_incr   <= '0';
                 wait_cnt        <= (others => '0');
                 cnt_mop         <= (others => '0');
                 debug_pack      <= (others => '0');
@@ -573,8 +625,8 @@ begin
 end process;
 
 -- what to send from the packet forming FSM?
-sel_dout_pack: process(flag_pack, cnt_mop, orb, bcid, trigger_cnt, P, N, rel_bcid, vmm_id, tdo_prv, channel_id, pdo,
-                  bitmask_null, hitsLen, sent_one)
+sel_dout_pack: process(flag_pack, cnt_mop, orb, bcid, trigger_cnt, P, N, rel_bcid, vmm_id_drv, tdo_prv, channel_id, pdo,
+                     bitmask_null, hitsLen, sent_one)
 begin
     case flag_pack is
     when SOP    => data_out_pack <= (others => '0');
@@ -588,10 +640,10 @@ begin
                     --                    bcid(rest)      & L1ID(first 8 MSB is zero)
         -- ROC DATA
         when "010"  =>  if(sent_one = '0')then
-                            data_out_pack <= trigger_cnt(7 downto 0) & P & N & rel_bcid & vmm_id;
+                            data_out_pack <= trigger_cnt(7 downto 0) & P & N & rel_bcid & vmm_id_drv;
                     --                          L1DC(rest)
                         else
-                            data_out_pack <= tdo_prv & P & N & rel_bcid & vmm_id;
+                            data_out_pack <= tdo_prv & P & N & rel_bcid & vmm_id_drv;
                     --                  previous TDO       (select the appropriate first byte...)
                         end if;
         when "011"  =>  data_out_pack <= channel_id & pdo;
@@ -853,12 +905,6 @@ begin
         din_daq_fifo    <= din_daq; -- register the daq data
         wr_en_fifo      <= wr_en_daq; -- register the wr_en
 
-        din_aux_fifo    <= din_aux;
-        wr_en_aux_fifo  <= wr_en_aux;
-
-        vmm_id          <= dout_aux_fifo(15 downto 13);
-        cnt_limit       <= dout_aux_fifo(11 downto 0);
-
         dout_elink      <= dout_elink_i;
         wr_en_elink     <= wr_en_elink_i;
 
@@ -867,35 +913,32 @@ end process;
 
     hitsLen     <= std_logic_vector(len_cnt);
     elink_done  <= pack_done or null_done;
+    vmm_id_drv  <= std_logic_vector(vmm_id_cnt);
 
-driverFIFO : DAQelinkFIFO
-  PORT MAP (
-    clk     => clk_in,
-    srst    => flush_final,
-    din     => din_daq_fifo,
-    wr_en   => wr_en_fifo,
-    rd_en   => rd_en_daq,
-    dout    => dout_fifo,
-    full    => daq_full,
-    empty   => daq_empty
-  );
 
-  auxFIFO : AuxElinkFIFO
-  PORT MAP (
-    clk     => clk_in,
-    srst    => flush_final,
-    din     => din_aux_fifo,
-    wr_en   => wr_en_aux_fifo,
-    rd_en   => rd_en_aux,
-    dout    => dout_aux_fifo,
-    full    => aux_full,
-    empty   => aux_empty
-  );
+fifo_network_inst: fifo_network
+    Port Map(
+    ---------------------------
+    ---- general interface ---- 
+    clk_in      => clk_in,
+    fifo_flush  => flush_net,
+    ---------------------------
+    ------- pf interface ------
+    vmm_id_pf   => vmm_id_pf,
+    din_daq     => din_daq_fifo,
+    wr_en_daq   => wr_en_fifo,
+    ---------------------------
+    --- driver interface ------
+    vmm_id_drv  => vmm_id_drv,
+    rd_en_daq   => rd_en_daq,
+    dout_daq    => dout_daq,
+    empty_daq   => empty_daq
+    );
 
   adaptFIFO : adapterFIFO
   PORT MAP (
     clk     => clk_in,
-    srst    => flush_final,
+    srst    => fifo_flush,
     din     => din_adapter,
     wr_en   => wr_en_adapter,
     rd_en   => rd_en_adapter,
@@ -904,7 +947,7 @@ driverFIFO : DAQelinkFIFO
     empty   => adapter_empty
   );
 
-  flush_final    <= fifo_flush or flush_i;
+  flush_net      <= fifo_flush or flush_net_i;
   adapter_active <= ena_adapt_pack or ena_adapt_null;
   
 --  probe_elink_tx : elink_ila

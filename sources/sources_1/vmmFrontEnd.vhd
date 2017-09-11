@@ -607,8 +607,6 @@ architecture Behavioral of vmmFrontEnd is
     signal timeout_limit        : std_logic_vector(15 downto 0) := (others => '0');
 
     signal elink_daq_wren       : std_logic := '0';
-    signal elink_aux_wren       : std_logic := '0';
-    signal elink_aux_data       : std_logic_vector(15 downto 0) := (others => '0');
     signal start_null           : std_logic := '0';
     signal start_pack           : std_logic := '0';
     signal elink_done           : std_logic := '0';
@@ -1032,8 +1030,6 @@ architecture Behavioral of vmmFrontEnd is
             linkHealth_bmsk : in std_logic_vector(8 downto 1);
             rst_FIFO        : out std_logic;
             
-            elink_aux_dout  : out std_logic_vector(15 downto 0);
-            elink_aux_wr    : out std_logic;
             elink_daq_wr    : out std_logic;
             elink_tr_cnt    : out std_logic_vector(15 downto 0);
             vmm_null_bmsk   : in  std_logic_vector(7 downto 0);
@@ -1539,8 +1535,7 @@ architecture Behavioral of vmmFrontEnd is
         --------- PF Interface ----------
         din_daq         : in  std_logic_vector(15 downto 0); -- data packets from packet formation
         wr_en_daq       : in  std_logic;                     -- write enable from packet formation
-        din_aux         : in  std_logic_vector(15 downto 0); -- auxiliary data (VMM & packet length)
-        wr_en_aux       : in  std_logic;                     -- auxiliary data (VMM & packet length) 
+        vmm_id_pf       : in  std_logic_vector(2 downto 0);
         trigger_cnt     : in  std_logic_vector(15 downto 0); -- trigger counter (in ROC header)  
         bitmask_null    : in  std_logic_vector(7 downto 0);  -- which VMMs have data?
         start_null      : in  std_logic;                     -- start the null header FSM
@@ -2041,8 +2036,6 @@ packet_formation_instance: packet_formation
         linkHealth_bmsk => linkHealth_bmsk,
         rst_FIFO        => pf_rst_FIFO,
         
-        elink_aux_dout  => elink_aux_data,
-        elink_aux_wr    => elink_aux_wren,
         elink_daq_wr    => elink_daq_wren,
         elink_tr_cnt    => trigger_cnt,
         vmm_null_bmsk   => bitmask_null,
@@ -2284,8 +2277,7 @@ DAQ_ELINK: elink_wrapper
         --------- PF Interface ----------
         din_daq         => daq_data_out_i,
         wr_en_daq       => elink_daq_wren,
-        din_aux         => elink_aux_data,
-        wr_en_aux       => elink_aux_wren,
+        vmm_id_pf       => pf_vmmIdRo,
         trigger_cnt     => trigger_cnt, 
         bitmask_null    => bitmask_null_pf,
         start_null      => start_null,
