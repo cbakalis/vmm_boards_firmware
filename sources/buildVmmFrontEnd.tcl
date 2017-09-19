@@ -35,13 +35,14 @@ set origin_dir [file dirname [info script]]
     #Set project name from argument
         if {$argv == "mdt_mu2e"} {    
             set projectname "MDT_MU2E"
+            set thepart "xc7a100tfgg484-2"
             puts "Correct. Building Project for MDT MU2E board..."
         } elseif {$argv == "gpvmm"} {
 	    set thepart "xc7a100tfgg484-2"
             set projectname "GPVMM"
             puts "Correct. Building Project for MDT GPVMM board..."
         } elseif {$argv == "mmfe1"} {
-	    set thepart "xc7a100tfgg484-2"
+	        set thepart "xc7a100tfgg484-2"
             set projectname "MMFE1"
             puts "Correct. Building Project for MDT MMFE1 board..."
 	} elseif {$argv == "mdt_446"} {
