@@ -199,7 +199,6 @@ set files [list \
  "[file normalize "$origin_dir/sources_1/ip/ila_overview.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/vio_0.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/vio_ip.xcix"]"\
- "[file normalize "$origin_dir/sources_1/ip/clk_wiz_gen.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/ila_spi_flash.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/axi_quad_spi_0.xcix"]"\
  "[file normalize "$origin_dir/sources_1/ip/icmp_payload_buffer.xcix"]"\
@@ -557,7 +556,8 @@ if {$argv == "mmfe8_vmm3"} {
     set files [list \
      "[file normalize "$origin_dir/sources_1/xadc/mmfe8_xadc/xadc.v"]"\
      "[file normalize "$origin_dir/sources_1/xadc/mmfe8_xadc/xadc_read.v"]"\
-     "[file normalize "$origin_dir/sources_1/xadc/mmfe8_xadc/xadc_wiz_0.xcix"]"
+     "[file normalize "$origin_dir/sources_1/xadc/mmfe8_xadc/xadc_wiz_0.xcix"]"\
+     "[file normalize "$origin_dir/sources_1/ip/mmfe8_mmcm/clk_wiz_gen.xcix"]"\
     ]
     add_files -norecurse -fileset $obj $files
 
@@ -577,7 +577,8 @@ if {$argv == "mmfe8_vmm3"} {
     set files [list \
      "[file normalize "$origin_dir/sources_1/xadc/mdt_xadc/xadc.v"]"\
      "[file normalize "$origin_dir/sources_1/xadc/mdt_xadc/xadc_read.v"]"\
-     "[file normalize "$origin_dir/sources_1/xadc/mdt_xadc/xadc_wiz_0.xcix"]"
+     "[file normalize "$origin_dir/sources_1/xadc/mdt_xadc/xadc_wiz_0.xcix"]"\
+     "[file normalize "$origin_dir/sources_1/ip/other_mmcm/clk_wiz_gen.xcix"]"\
     ]
     add_files -norecurse -fileset $obj $files
 
